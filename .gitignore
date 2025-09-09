@@ -1,0 +1,11 @@
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+
+# PHP vendor directory
+vendor/
+
+# Exclude build
+build/
