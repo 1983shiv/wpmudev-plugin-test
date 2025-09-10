@@ -6,6 +6,7 @@
 	convertErrorsToExceptions="true"
 	convertNoticesToExceptions="true"
 	convertWarningsToExceptions="true"
+	stopOnFailure="false"
 	>
 	<testsuites>
 		<testsuite name="testing">
@@ -13,4 +14,16 @@
 			<exclude>./tests/test-sample.php</exclude>
 		</testsuite>
 	</testsuites>
+<!-- For PHPUnit 9+ -->
+    <coverage>
+        <include>
+            <directory suffix=".php">./app/</directory>
+            <directory suffix=".php">./core/</directory>
+        </include>
+        <exclude>
+            <directory>./tests/</directory>
+            <directory>./vendor/</directory>
+            <directory>./node_modules/</directory>
+        </exclude>
+    </coverage>
 </phpunit>
