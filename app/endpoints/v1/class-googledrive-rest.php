@@ -23,6 +23,7 @@ use WP_Error;
 use Google_Client;
 use Google_Service_Drive;
 use Google_Service_Drive_DriveFile;
+use Google_Service_Oauth2;
 
 class Drive_API extends Base {
 
@@ -85,10 +86,13 @@ class Drive_API extends Base {
         $this->client->setAccessType( 'offline' );
         $this->client->setPrompt( 'consent' );
 
-        // Set access token if available
-        $access_token = get_option( 'wpmudev_drive_access_token', '' );
-        if ( ! empty( $access_token ) ) {
-            $this->client->setAccessToken( $access_token );
+        // Set access token if available and decrypt it
+        $encrypted_token = get_option( 'wpmudev_drive_access_token', '' );
+        if ( ! empty( $encrypted_token ) ) {
+            $decrypted_token = $this->decrypt_token( $encrypted_token );
+            if ( $decrypted_token ) {
+                $this->client->setAccessToken( $decrypted_token );
+            }
         }
 
         $this->drive_service = new Google_Service_Drive( $this->client );
@@ -117,6 +121,34 @@ class Drive_API extends Base {
         register_rest_route( 'wpmudev/v1/drive', '/auth', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'start_auth' ),
+            'permission_callback' => array( $this, 'check_permissions' ),
+        ) );
+
+        // Check authentication status
+        register_rest_route( 'wpmudev/v1/drive', '/auth-status', array(
+            'methods'             => 'GET',
+            'callback'            => array( $this, 'get_auth_status' ),
+            'permission_callback' => array( $this, 'check_permissions' ),
+        ) );
+
+        // Revoke authentication
+        register_rest_route( 'wpmudev/v1/drive', '/revoke-auth', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'revoke_auth' ),
+            'permission_callback' => array( $this, 'check_permissions' ),
+        ) );
+
+        // Refresh token manually
+        register_rest_route( 'wpmudev/v1/drive', '/refresh-token', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'manual_refresh_token' ),
+            'permission_callback' => array( $this, 'check_permissions' ),
+        ) );
+
+        // Debug endpoint (remove in production)
+        register_rest_route( 'wpmudev/v1/drive', '/debug-state', array(
+            'methods'             => 'GET',
+            'callback'            => array( $this, 'debug_oauth_state' ),
             'permission_callback' => array( $this, 'check_permissions' ),
         ) );
 
@@ -442,56 +474,365 @@ class Drive_API extends Base {
         return '127.0.0.1';
     }
 
-    /**
-     * Start Google OAuth flow.
+        /**
+     * Validate OAuth state parameter for CSRF protection.
+     *
+     * @param string $received_state The state parameter received from Google.
+     * @return bool True if state is valid, false otherwise.
      */
-    public function start_auth() {
-        if ( ! $this->client ) {
-            return new WP_Error( 'missing_credentials', 'Google OAuth credentials not configured', array( 'status' => 400 ) );
+    protected function validate_oauth_state( $received_state ) {
+        if ( empty( $received_state ) ) {
+            return false;
         }
 
-        $auth_url = $this->client->createAuthUrl();
+        // Check if the state exists in our transients
+        $stored_time = get_transient( 'wpmudev_oauth_state_' . $received_state );
+        
+        if ( $stored_time === false ) {
+            return false;
+        }
 
-        return new WP_REST_Response( array(
-            'success' => true,
-            'auth_url' => $auth_url,
-        ) );
+        // Delete the used state to prevent replay attacks
+        delete_transient( 'wpmudev_oauth_state_' . $received_state );
+        
+        return true;
     }
 
     /**
-     * Handle OAuth callback.
+     * Store OAuth tokens securely.
+     *
+     * @param array $token_data Token data from Google.
+     * @return bool True if tokens stored successfully, false otherwise.
      */
-    public function handle_callback( WP_REST_Request $request ) {
-        $code  = sanitize_text_field( $request->get_param( 'code' ) );
-        $state = sanitize_text_field( $request->get_param( 'state' ) );
+    protected function store_tokens( $token_data ) {
+        try {
+            // Encrypt and store access token
+            $encrypted_token = $this->encrypt_token( $token_data );
+            $access_stored = update_option( 'wpmudev_drive_access_token', $encrypted_token );
 
-        if ( empty( $code ) ) {
-            wp_die( 'Authorization code not received' );
+            // Store refresh token separately if available
+            $refresh_stored = true;
+            if ( isset( $token_data['refresh_token'] ) ) {
+                $encrypted_refresh = $this->encrypt_token( $token_data['refresh_token'] );
+                $refresh_stored = update_option( 'wpmudev_drive_refresh_token', $encrypted_refresh );
+            }
+
+            // Calculate and store expiration time
+            $expires_in = isset( $token_data['expires_in'] ) ? (int) $token_data['expires_in'] : 3600;
+            $expires_at = time() + $expires_in;
+            $expires_stored = update_option( 'wpmudev_drive_token_expires', $expires_at );
+
+            // Store token metadata
+            $metadata = array(
+                'created_at'    => current_time( 'mysql' ),
+                'expires_at'    => date( 'Y-m-d H:i:s', $expires_at ),
+                'scope'         => isset( $token_data['scope'] ) ? $token_data['scope'] : implode( ' ', $this->scopes ),
+                'token_type'    => isset( $token_data['token_type'] ) ? $token_data['token_type'] : 'Bearer',
+            );
+            $metadata_stored = update_option( 'wpmudev_drive_token_metadata', $metadata );
+
+            return $access_stored && $refresh_stored && $expires_stored && $metadata_stored;
+
+        } catch ( Exception $e ) {
+            error_log( 'WPMUDEV Drive: Token storage failed - ' . $e->getMessage() );
+            return false;
+        }
+    }
+
+    /**
+     * Verify stored token by making a test API call.
+     *
+     * @return array Verification result with success status and user info.
+     */
+    protected function verify_token() {
+        try {
+            // Get user info to verify token works
+            $oauth2_service = new Google_Service_Oauth2( $this->client );
+            $user_info = $oauth2_service->userinfo->get();
+
+            return array(
+                'success'    => true,
+                'user_id'    => $user_info->getId(),
+                'user_email' => $user_info->getEmail(),
+                'user_name'  => $user_info->getName(),
+                'message'    => 'Token verified successfully',
+            );
+
+        } catch ( Exception $e ) {
+            return array(
+                'success' => false,
+                'message' => 'Token verification failed: ' . $e->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * Handle OAuth errors with proper logging and user feedback.
+     *
+     * @param string $error_code The error code.
+     * @param string $error_description The error description.
+     */
+    protected function handle_oauth_error( $error_code, $error_description ) {
+        // Log the error
+        error_log( "WPMUDEV Drive OAuth Error: {$error_code} - {$error_description}" );
+        $this->log_auth_action( 'auth_error', 0, "{$error_code}: {$error_description}" );
+
+        // Map common errors to user-friendly messages
+        $error_messages = array(
+            'access_denied'           => __( 'Access was denied. Please try again and grant the necessary permissions.', 'wpmudev-plugin-test' ),
+            'invalid_request'         => __( 'Invalid request. Please try the authentication process again.', 'wpmudev-plugin-test' ),
+            'unauthorized_client'     => __( 'Unauthorized client. Please check your Google OAuth credentials.', 'wpmudev-plugin-test' ),
+            'unsupported_response_type' => __( 'Unsupported response type. Please contact support.', 'wpmudev-plugin-test' ),
+            'invalid_scope'           => __( 'Invalid scope requested. Please contact support.', 'wpmudev-plugin-test' ),
+            'server_error'            => __( 'Google server error. Please try again later.', 'wpmudev-plugin-test' ),
+            'temporarily_unavailable' => __( 'Service temporarily unavailable. Please try again later.', 'wpmudev-plugin-test' ),
+        );
+
+        $user_message = isset( $error_messages[ $error_code ] ) 
+            ? $error_messages[ $error_code ] 
+            : sprintf( __( 'Authentication failed: %s', 'wpmudev-plugin-test' ), $error_description );
+
+        // Redirect to error page
+        $redirect_url = add_query_arg(
+            array(
+                'auth'  => 'error',
+                'error' => urlencode( $error_code ),
+                'msg'   => urlencode( $user_message ),
+            ),
+            admin_url( 'admin.php?page=wpmudev_plugintest_drive' )
+        );
+
+        wp_redirect( $redirect_url );
+        exit;
+    }
+
+    /**
+     * Encrypt token data.
+     *
+     * @param mixed $token Token data to encrypt.
+     * @return string Encrypted token.
+     */
+    protected function encrypt_token( $token ) {
+        $key = $this->get_encryption_key();
+        $serialized = is_array( $token ) ? serialize( $token ) : $token;
+        
+        $salt = wp_salt( 'auth' );
+        $data = $salt . $serialized;
+        
+        return base64_encode( openssl_encrypt( $data, 'AES-256-CBC', $key, 0, substr( md5( $key ), 0, 16 ) ) );
+    }
+
+    /**
+     * Decrypt token data.
+     *
+     * @param string $encrypted_token Encrypted token.
+     * @return mixed Decrypted token data or false on failure.
+     */
+    protected function decrypt_token( $encrypted_token ) {
+        if ( empty( $encrypted_token ) ) {
+            return false;
         }
 
         try {
-            // Exchange code for access token
+            $key = $this->get_encryption_key();
+            $decrypted = openssl_decrypt( base64_decode( $encrypted_token ), 'AES-256-CBC', $key, 0, substr( md5( $key ), 0, 16 ) );
+            
+            if ( false === $decrypted ) {
+                return false;
+            }
+
+            $salt = wp_salt( 'auth' );
+            if ( 0 !== strpos( $decrypted, $salt ) ) {
+                return false;
+            }
+
+            $serialized = substr( $decrypted, strlen( $salt ) );
+            
+            // Try to unserialize, if it fails return as string
+            $unserialized = @unserialize( $serialized );
+            return $unserialized !== false ? $unserialized : $serialized;
+
+        } catch ( Exception $e ) {
+            return false;
+        }
+    }
+
+    /**
+     * Log authentication actions.
+     *
+     * @param string $action The action performed.
+     * @param int    $user_id The user ID.
+     * @param string $details Additional details.
+     */
+    protected function log_auth_action( $action, $user_id = 0, $details = '' ) {
+        $log_entry = array(
+            'action'    => $action,
+            'user_id'   => $user_id,
+            'details'   => $details,
+            'timestamp' => current_time( 'mysql' ),
+            'ip'        => $this->get_client_ip(),
+            'user_agent' => isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : '',
+        );
+
+        $existing_log = get_transient( 'wpmudev_drive_auth_log' ) ?: array();
+        $existing_log[] = $log_entry;
+        
+        // Keep only last 100 entries
+        if ( count( $existing_log ) > 100 ) {
+            $existing_log = array_slice( $existing_log, -100 );
+        }
+        
+        set_transient( 'wpmudev_drive_auth_log', $existing_log, 7 * DAY_IN_SECONDS );
+    }
+
+
+
+    /**
+     * Start Google OAuth flow.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return WP_REST_Response|WP_Error Response object or error.
+     */
+    public function start_auth( WP_REST_Request $request ) {
+        try {
+            // Check if credentials are configured
+            if ( ! $this->client ) {
+                return new WP_Error(
+                    'missing_credentials',
+                    __( 'Google OAuth credentials not configured. Please save your credentials first.', 'wpmudev-plugin-test' ),
+                    array( 'status' => 400 )
+                );
+            }
+
+            // Generate a unique state parameter (simpler approach)
+            $state = wp_generate_password( 32, false, false );
+            
+            // Store state globally (not tied to specific user ID)
+            set_transient( 'wpmudev_oauth_state_' . $state, time(), 600 ); // 10 minutes
+
+            // Set state parameter
+            $this->client->setState( $state );
+
+            // Generate authorization URL
+            $auth_url = $this->client->createAuthUrl();
+
+            // Log authentication attempt
+            $this->log_auth_action( 'auth_start', get_current_user_id() );
+
+            return new WP_REST_Response(
+                array(
+                    'success'  => true,
+                    'auth_url' => $auth_url,
+                    'state'    => $state,
+                    'message'  => __( 'Authorization URL generated successfully. Redirect user to this URL.', 'wpmudev-plugin-test' ),
+                ),
+                200
+            );
+
+        } catch ( Exception $e ) {
+            $this->log_auth_action( 'auth_error', get_current_user_id(), $e->getMessage() );
+            
+            return new WP_Error(
+                'auth_url_generation_failed',
+                __( 'Failed to generate authorization URL: ', 'wpmudev-plugin-test' ) . $e->getMessage(),
+                array( 'status' => 500 )
+            );
+        }
+    }
+
+     /**
+     * Handle OAuth callback with enhanced security and error handling.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return void Redirects user or shows error page.
+     */
+    public function handle_callback( WP_REST_Request $request ) {
+        try {
+            $code  = sanitize_text_field( $request->get_param( 'code' ) );
+            $state = sanitize_text_field( $request->get_param( 'state' ) );
+            $error = sanitize_text_field( $request->get_param( 'error' ) );
+
+            // Debug logging
+            error_log( "WPMUDEV Drive Callback Debug: code=" . (!empty($code) ? 'present' : 'missing') . ", state=" . $state . ", error=" . $error );
+
+            // Handle OAuth errors from Google
+            if ( ! empty( $error ) ) {
+                $error_description = sanitize_text_field( $request->get_param( 'error_description' ) );
+                $this->handle_oauth_error( $error, $error_description );
+                return;
+            }
+
+            // Validate authorization code
+            if ( empty( $code ) ) {
+                $this->handle_oauth_error( 'missing_code', 'Authorization code not received from Google' );
+                return;
+            }
+
+            // Validate state parameter (CSRF protection)
+            if ( ! $this->validate_oauth_state( $state ) ) {
+                error_log( "WPMUDEV Drive: State validation failed. Received: " . $state );
+                $this->handle_oauth_error( 'invalid_state', 'Invalid state parameter - possible CSRF attack' );
+                return;
+            }
+
+            // Initialize Google Client if not already done
+            if ( ! $this->client ) {
+                $this->setup_google_client();
+                
+                if ( ! $this->client ) {
+                    $this->handle_oauth_error( 'client_setup_failed', 'Failed to initialize Google Client' );
+                    return;
+                }
+            }
+
+            // Exchange authorization code for access token
             $access_token = $this->client->fetchAccessTokenWithAuthCode( $code );
 
+            // Check for token exchange errors
             if ( array_key_exists( 'error', $access_token ) ) {
-                wp_die( 'Error getting access token: ' . esc_html( $access_token['error'] ) );
+                $error_msg = isset( $access_token['error_description'] ) 
+                    ? $access_token['error_description'] 
+                    : $access_token['error'];
+                
+                $this->handle_oauth_error( 'token_exchange_failed', $error_msg );
+                return;
             }
 
-            // Store tokens
-            update_option( 'wpmudev_drive_access_token', $access_token );
-            if ( isset( $access_token['refresh_token'] ) ) {
-                update_option( 'wpmudev_drive_refresh_token', $access_token['refresh_token'] );
-            }
+            // Store tokens securely
+            $token_stored = $this->store_tokens( $access_token );
             
-            $expires_in = isset( $access_token['expires_in'] ) ? time() + $access_token['expires_in'] : time() + 3600;
-            update_option( 'wpmudev_drive_token_expires', $expires_in );
+            if ( ! $token_stored ) {
+                $this->handle_oauth_error( 'token_storage_failed', 'Failed to store access tokens' );
+                return;
+            }
 
-            // Redirect back to admin page
-            wp_redirect( admin_url( 'admin.php?page=wpmudev_plugintest_drive&auth=success' ) );
+            // Verify token by making a test API call
+            $verification_result = $this->verify_token();
+            
+            if ( ! $verification_result['success'] ) {
+                $this->handle_oauth_error( 'token_verification_failed', $verification_result['message'] );
+                return;
+            }
+
+            // Log successful authentication
+            $this->log_auth_action( 'auth_success', 1, 'OAuth flow completed successfully' );
+
+            // Redirect to success page
+            $redirect_url = add_query_arg(
+                array(
+                    'auth'    => 'success',
+                    'user'    => $verification_result['user_email'],
+                    'expires' => get_option( 'wpmudev_drive_token_expires' ),
+                ),
+                admin_url( 'admin.php?page=wpmudev_plugintest_drive' )
+            );
+
+            wp_redirect( $redirect_url );
             exit;
 
         } catch ( Exception $e ) {
-            wp_die( 'Failed to get access token: ' . esc_html( $e->getMessage() ) );
+            error_log( "WPMUDEV Drive Callback Exception: " . $e->getMessage() );
+            $this->handle_oauth_error( 'unexpected_error', $e->getMessage() );
         }
     }
 
@@ -503,32 +844,236 @@ class Drive_API extends Base {
             return false;
         }
 
-        // Check if token is expired and refresh if needed
+        // Get current access token
+        $encrypted_token = get_option( 'wpmudev_drive_access_token' );
+        
+        if ( empty( $encrypted_token ) ) {
+            return false;
+        }
+
+        $access_token = $this->decrypt_token( $encrypted_token );
+        
+        if ( false === $access_token ) {
+            return false;
+        }
+
+        // Set the access token
+        $this->client->setAccessToken( $access_token );
+
+        // Check if token is expired
         if ( $this->client->isAccessTokenExpired() ) {
-            $refresh_token = get_option( 'wpmudev_drive_refresh_token' );
-            
-            if ( empty( $refresh_token ) ) {
-                return false;
-            }
-
-            try {
-                $new_token = $this->client->fetchAccessTokenWithRefreshToken( $refresh_token );
-                
-                if ( array_key_exists( 'error', $new_token ) ) {
-                    return false;
-                }
-
-                update_option( 'wpmudev_drive_access_token', $new_token );
-                $expires_in = isset( $new_token['expires_in'] ) ? time() + $new_token['expires_in'] : time() + 3600;
-                update_option( 'wpmudev_drive_token_expires', $expires_in );
-                
-                return true;
-            } catch ( Exception $e ) {
-                return false;
-            }
+            return $this->refresh_access_token();
         }
 
         return true;
+    }
+
+    /**
+     * Refresh access token using refresh token.
+     *
+     * @return bool True if refresh successful, false otherwise.
+     */
+    private function refresh_access_token() {
+        $encrypted_refresh_token = get_option( 'wpmudev_drive_refresh_token' );
+        
+        if ( empty( $encrypted_refresh_token ) ) {
+            $this->log_auth_action( 'refresh_failed', 0, 'No refresh token available' );
+            return false;
+        }
+
+        $refresh_token = $this->decrypt_token( $encrypted_refresh_token );
+        
+        if ( false === $refresh_token ) {
+            $this->log_auth_action( 'refresh_failed', 0, 'Failed to decrypt refresh token' );
+            return false;
+        }
+
+        try {
+            // Attempt to refresh the token
+            $new_token = $this->client->fetchAccessTokenWithRefreshToken( $refresh_token );
+            
+            if ( array_key_exists( 'error', $new_token ) ) {
+                $error_msg = isset( $new_token['error_description'] ) 
+                    ? $new_token['error_description'] 
+                    : $new_token['error'];
+                
+                $this->log_auth_action( 'refresh_failed', 0, "Token refresh error: {$error_msg}" );
+                
+                // If refresh token is invalid, clear stored tokens
+                if ( in_array( $new_token['error'], array( 'invalid_grant', 'invalid_request' ) ) ) {
+                    $this->clear_stored_tokens();
+                }
+                
+                return false;
+            }
+
+            // Store the new access token
+            $token_stored = $this->store_tokens( $new_token );
+            
+            if ( ! $token_stored ) {
+                $this->log_auth_action( 'refresh_failed', 0, 'Failed to store refreshed token' );
+                return false;
+            }
+
+            $this->log_auth_action( 'refresh_success', 0, 'Token refreshed successfully' );
+            return true;
+
+        } catch ( Exception $e ) {
+            $this->log_auth_action( 'refresh_error', 0, $e->getMessage() );
+            return false;
+        }
+    }
+
+    /**
+     * Clear all stored tokens and related data.
+     */
+    public function clear_stored_tokens() {
+        delete_option( 'wpmudev_drive_access_token' );
+        delete_option( 'wpmudev_drive_refresh_token' );
+        delete_option( 'wpmudev_drive_token_expires' );
+        delete_option( 'wpmudev_drive_token_metadata' );
+        
+        $this->log_auth_action( 'tokens_cleared', get_current_user_id(), 'All tokens cleared' );
+    }
+
+    /**
+     * Get authentication status.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return WP_REST_Response Response object.
+     */
+    public function get_auth_status( WP_REST_Request $request ) {
+        $access_token = get_option( 'wpmudev_drive_access_token' );
+        $token_metadata = get_option( 'wpmudev_drive_token_metadata', array() );
+        $expires_at = get_option( 'wpmudev_drive_token_expires', 0 );
+
+        $is_authenticated = ! empty( $access_token );
+        $is_expired = $expires_at > 0 && time() >= $expires_at;
+        $has_refresh_token = ! empty( get_option( 'wpmudev_drive_refresh_token' ) );
+
+        $response_data = array(
+            'success'           => true,
+            'is_authenticated'  => $is_authenticated,
+            'is_expired'        => $is_expired,
+            'has_refresh_token' => $has_refresh_token,
+            'expires_at'        => $expires_at,
+            'expires_in'        => $expires_at > 0 ? max( 0, $expires_at - time() ) : 0,
+            'token_metadata'    => $token_metadata,
+        );
+
+        // If we have a token, try to validate it
+        if ( $is_authenticated && $this->client ) {
+            $token_valid = $this->ensure_valid_token();
+            $response_data['token_valid'] = $token_valid;
+            
+            if ( $token_valid ) {
+                $verification = $this->verify_token();
+                $response_data['user_info'] = $verification['success'] ? array(
+                    'email' => $verification['user_email'],
+                    'name'  => $verification['user_name'],
+                ) : null;
+            }
+        }
+
+        return new WP_REST_Response( $response_data, 200 );
+    }
+
+    /**
+     * Revoke authentication and clear tokens.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return WP_REST_Response Response object.
+     */
+    public function revoke_auth( WP_REST_Request $request ) {
+        try {
+            // Try to revoke token with Google
+            if ( $this->client && $this->ensure_valid_token() ) {
+                try {
+                    $this->client->revokeToken();
+                } catch ( Exception $e ) {
+                    // Log but don't fail - we'll clear local tokens anyway
+                    error_log( 'WPMUDEV Drive: Token revocation failed - ' . $e->getMessage() );
+                }
+            }
+
+            // Clear all stored tokens
+            $this->clear_stored_tokens();
+
+            return new WP_REST_Response(
+                array(
+                    'success' => true,
+                    'message' => __( 'Authentication revoked successfully.', 'wpmudev-plugin-test' ),
+                ),
+                200
+            );
+
+        } catch ( Exception $e ) {
+            return new WP_Error(
+                'revoke_failed',
+                __( 'Failed to revoke authentication: ', 'wpmudev-plugin-test' ) . $e->getMessage(),
+                array( 'status' => 500 )
+            );
+        }
+    }
+
+    /**
+     * Manually refresh access token.
+     *
+     * @param WP_REST_Request $request The REST request object.
+     * @return WP_REST_Response|WP_Error Response object or error.
+     */
+    public function manual_refresh_token( WP_REST_Request $request ) {
+        if ( ! $this->client ) {
+            return new WP_Error(
+                'no_client',
+                __( 'Google client not initialized.', 'wpmudev-plugin-test' ),
+                array( 'status' => 400 )
+            );
+        }
+
+        $refresh_success = $this->refresh_access_token();
+
+        if ( ! $refresh_success ) {
+            return new WP_Error(
+                'refresh_failed',
+                __( 'Failed to refresh access token. Please re-authenticate.', 'wpmudev-plugin-test' ),
+                array( 'status' => 401 )
+            );
+        }
+
+        $expires_at = get_option( 'wpmudev_drive_token_expires', 0 );
+
+        return new WP_REST_Response(
+            array(
+                'success'    => true,
+                'message'    => __( 'Access token refreshed successfully.', 'wpmudev-plugin-test' ),
+                'expires_at' => $expires_at,
+                'expires_in' => $expires_at > 0 ? max( 0, $expires_at - time() ) : 0,
+            ),
+            200
+        );
+    }
+
+    /**
+     * Debug OAuth state (temporary - remove in production)
+     */
+    public function debug_oauth_state( WP_REST_Request $request ) {
+        global $wpdb;
+        
+        $transient_prefix = '_transient_wpmudev_oauth_state_';
+        $results = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+                $transient_prefix . '%'
+            )
+        );
+
+        
+
+        return new WP_REST_Response( array(
+            'stored_states' => $results,
+            'current_user_id' => get_current_user_id(),
+        ) );
     }
 
     /**

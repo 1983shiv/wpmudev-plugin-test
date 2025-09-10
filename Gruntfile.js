@@ -41,7 +41,7 @@ module.exports = function (grunt) {
 				filter: 'isFile',
 			},
 			assets: ['assets/css/**', 'assets/js/**'],
-			folder_v2: ['../plugins/**'],
+			folder_v2: ['./build/**'],
 		},
 
 		checktextdomain: {
@@ -78,7 +78,7 @@ module.exports = function (grunt) {
 		copy: {
 			pro: {
 				src: excludeCopyFilesPro,
-				dest: '../plugins/<%= pkg.name %>/',
+				dest: './build/<%= pkg.name %>/',
 			},
 		},
 
@@ -86,10 +86,10 @@ module.exports = function (grunt) {
 			pro: {
 				options: {
 					mode: 'zip',
-					archive: '../plugins/<%= pkg.name %>-<%= pkg.version %>.zip',
+					archive: './build/<%= pkg.name %>-<%= pkg.version %>.zip',
 				},
 				expand: true,
-				cwd: '../plugins/<%= pkg.name %>/',
+				cwd: './build/<%= pkg.name %>/',
 				src: ['**/*'],
 				dest: '<%= pkg.name %>/',
 			},
@@ -102,7 +102,7 @@ module.exports = function (grunt) {
 	grunt.registerTask('version-compare', ['search'])
 	grunt.registerTask('finish', function () {
 		const json = grunt.file.readJSON('package.json')
-		const file = '../plugins/' + json.name + '-' + json.version + '.zip'
+		const file = './build/' + json.name + '-' + json.version + '.zip'
 		grunt.log.writeln('Process finished.')
 
 		grunt.log.writeln('----------')
