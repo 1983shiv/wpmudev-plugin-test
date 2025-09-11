@@ -440,8 +440,9 @@ class Drive_API_Enhanced extends Base {
         return true;
     }
 
+    
     /**
-     * List files (Enhanced)
+     * List files with complete pagination support (Enhanced)
      */
     public function list_files( WP_REST_Request $request ) {
         if ( ! $this->ensure_valid_token() ) {
@@ -449,39 +450,204 @@ class Drive_API_Enhanced extends Base {
         }
 
         try {
-            $page_size = (int) $request->get_param( 'page_size' ) ?: 20;
-            $query = $request->get_param( 'query' ) ?: 'trashed=false';
+            // Get pagination parameters
+            $page_size = min( (int) $request->get_param( 'page_size' ) ?: 20, 100 ); // Max 100 items per page
+            $page_token = sanitize_text_field( $request->get_param( 'page_token' ) );
+            $query = sanitize_text_field( $request->get_param( 'query' ) ?: 'trashed=false' );
+            $order_by = sanitize_text_field( $request->get_param( 'order_by' ) ?: 'modifiedTime desc' );
+            
+            // Validate order_by parameter
+            $allowed_order_fields = array(
+                'createdTime', 'folder', 'modifiedByMeTime', 'modifiedTime', 
+                'name', 'quotaBytesUsed', 'recency', 'sharedWithMeTime', 'starred', 'viewedByMeTime'
+            );
+            
+            $order_parts = explode( ' ', $order_by );
+            $order_field = $order_parts[0] ?? 'modifiedTime';
+            $order_direction = strtolower( $order_parts[1] ?? 'desc' );
+            
+            if ( ! in_array( $order_field, $allowed_order_fields ) ) {
+                $order_field = 'modifiedTime';
+            }
+            
+            if ( ! in_array( $order_direction, array( 'asc', 'desc' ) ) ) {
+                $order_direction = 'desc';
+            }
+            
+            $validated_order = $order_field . ' ' . $order_direction;
 
+            // Build request options
             $options = array(
-                'pageSize' => min( $page_size, 100 ), // Limit max page size
-                'q'        => sanitize_text_field( $query ),
-                'fields'   => 'files(id,name,mimeType,size,modifiedTime,webViewLink)',
+                'pageSize' => $page_size,
+                'q'        => $query,
+                'orderBy'  => $validated_order,
+                'fields'   => 'files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink,createdTime,owners,shared),nextPageToken,incompleteSearch',
             );
 
-            $results = $this->drive_service->files->listFiles( $options );
-            $files   = $results->getFiles();
+            // Add page token for pagination
+            if ( ! empty( $page_token ) ) {
+                $options['pageToken'] = $page_token;
+            }
 
+            // Execute API request with retry logic
+            $results = $this->execute_with_retry( function() use ( $options ) {
+                return $this->drive_service->files->listFiles( $options );
+            });
+
+            if ( ! $results ) {
+                throw new Exception( 'Failed to retrieve files from Google Drive after multiple attempts' );
+            }
+
+            $files = $results->getFiles();
+            $next_page_token = $results->getNextPageToken();
+            $incomplete_search = $results->getIncompleteSearch();
+
+            // Process file list
             $file_list = array();
             foreach ( $files as $file ) {
-                $file_list[] = array(
+                $file_data = array(
                     'id'           => $file->getId(),
                     'name'         => $file->getName(),
                     'mimeType'     => $file->getMimeType(),
                     'size'         => $file->getSize(),
                     'modifiedTime' => $file->getModifiedTime(),
+                    'createdTime'  => $file->getCreatedTime(),
                     'webViewLink'  => $file->getWebViewLink(),
+                    'parents'      => $file->getParents(),
+                    'thumbnailLink' => $file->getThumbnailLink(),
+                    'iconLink'     => $file->getIconLink(),
+                    'isFolder'     => $file->getMimeType() === 'application/vnd.google-apps.folder',
+                    'shared'       => $file->getShared(),
+                );
+
+                // Add formatted file size
+                if ( $file->getSize() ) {
+                    $file_data['sizeFormatted'] = $this->format_file_size( $file->getSize() );
+                }
+
+                // Add owner information
+                $owners = $file->getOwners();
+                if ( ! empty( $owners ) ) {
+                    $file_data['owner'] = array(
+                        'displayName' => $owners[0]->getDisplayName(),
+                        'emailAddress' => $owners[0]->getEmailAddress(),
+                    );
+                }
+
+                $file_list[] = $file_data;
+            }
+
+            // Build pagination info
+            $pagination = array(
+                'currentPageSize' => count( $file_list ),
+                'requestedPageSize' => $page_size,
+                'hasNextPage' => ! empty( $next_page_token ),
+                'nextPageToken' => $next_page_token,
+                'incompleteSearch' => $incomplete_search,
+            );
+
+            // Build response
+            $response_data = array(
+                'success'    => true,
+                'files'      => $file_list,
+                'pagination' => $pagination,
+                'query'      => $query,
+                'orderBy'    => $validated_order,
+                'timestamp'  => current_time( 'c' ),
+            );
+
+            // Log successful request
+            $this->logger->log_auth_action( 
+                'files_listed', 
+                get_current_user_id(), 
+                sprintf( 'Listed %d files (page size: %d)', count( $file_list ), $page_size )
+            );
+
+            return new WP_REST_Response( $response_data, 200 );
+
+        } catch ( Exception $e ) {
+            // Log error
+            $this->logger->log_auth_action( 'list_files_error', get_current_user_id(), $e->getMessage() );
+            
+            // Handle specific Google API errors
+            if ( strpos( $e->getMessage(), 'quotaExceeded' ) !== false ) {
+                return new WP_Error( 
+                    'quota_exceeded', 
+                    'Google Drive API quota exceeded. Please try again later.', 
+                    array( 'status' => 429 )
+                );
+            }
+            
+            if ( strpos( $e->getMessage(), 'authError' ) !== false ) {
+                return new WP_Error( 
+                    'auth_error', 
+                    'Authentication expired. Please re-authenticate.', 
+                    array( 'status' => 401 )
+                );
+            }
+            
+            if ( strpos( $e->getMessage(), 'invalidQuery' ) !== false ) {
+                return new WP_Error( 
+                    'invalid_query', 
+                    'Invalid search query. Please check your query syntax.', 
+                    array( 'status' => 400 )
                 );
             }
 
-            return new WP_REST_Response( array(
-                'success' => true,
-                'files'   => $file_list,
-                'count'   => count( $file_list ),
-            ), 200 );
-
-        } catch ( Exception $e ) {
-            return new WP_Error( 'api_error', $e->getMessage(), array( 'status' => 500 ) );
+            return new WP_Error( 
+                'api_error', 
+                'Failed to retrieve files: ' . $e->getMessage(), 
+                array( 'status' => 500 )
+            );
         }
+    }
+
+    /**
+     * Execute API request with retry logic
+     */
+    private function execute_with_retry( callable $request, $max_retries = 3 ) {
+        $attempt = 0;
+        
+        while ( $attempt < $max_retries ) {
+            try {
+                return $request();
+            } catch ( Exception $e ) {
+                $attempt++;
+                
+                // Don't retry for auth errors or client errors
+                if ( strpos( $e->getMessage(), 'authError' ) !== false || 
+                    strpos( $e->getMessage(), 'invalid' ) !== false ) {
+                    throw $e;
+                }
+                
+                if ( $attempt >= $max_retries ) {
+                    throw $e;
+                }
+                
+                // Exponential backoff: wait 1s, 2s, 4s
+                sleep( pow( 2, $attempt - 1 ) );
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Format file size in human readable format
+     */
+    private function format_file_size( $bytes ) {
+        if ( ! $bytes ) {
+            return '0 B';
+        }
+        
+        $units = array( 'B', 'KB', 'MB', 'GB', 'TB' );
+        $bytes = max( $bytes, 0 );
+        $pow = floor( ( $bytes ? log( $bytes ) : 0 ) / log( 1024 ) );
+        $pow = min( $pow, count( $units ) - 1 );
+        
+        $bytes /= pow( 1024, $pow );
+        
+        return round( $bytes, 2 ) . ' ' . $units[ $pow ];
     }
 
     /**
