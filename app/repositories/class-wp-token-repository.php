@@ -76,7 +76,17 @@ class WP_Token_Repository implements Token_Repository_Interface {
         if ( empty( $encrypted ) ) {
             return false;
         }
-        return $this->encryption_service->decrypt( $encrypted );
+        
+        $decrypted = $this->encryption_service->decrypt( $encrypted );
+        
+        // Handle both string and array formats
+        if ( is_array( $decrypted ) && isset( $decrypted['refresh_token'] ) ) {
+            return $decrypted['refresh_token'];
+        } elseif ( is_string( $decrypted ) ) {
+            return $decrypted;
+        }
+        
+        return false;
     }
 
     /**
@@ -103,13 +113,16 @@ class WP_Token_Repository implements Token_Repository_Interface {
      *
      * @return bool
      */
+    /**
+     * Clear all tokens
+     */
     public function clear_tokens() {
-        $result1 = delete_option( 'wpmudev_drive_access_token' );
-        $result2 = delete_option( 'wpmudev_drive_refresh_token' );
-        $result3 = delete_option( 'wpmudev_drive_token_expires' );
-        $result4 = delete_option( 'wpmudev_drive_token_metadata' );
+        delete_option( 'wpmudev_drive_access_token' );
+        delete_option( 'wpmudev_drive_refresh_token' );
+        delete_option( 'wpmudev_drive_token_expires' );
+        delete_option( 'wpmudev_drive_token_metadata' );
         
-        return $result1 && $result2 && $result3 && $result4;
+        return true;
     }
 
     /**

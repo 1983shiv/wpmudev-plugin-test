@@ -91,6 +91,13 @@ class Google_Auth_Service implements Auth_Service_Interface {
         }
 
         try {
+            // Ensure we have the refresh token set in the client
+            $current_token = $this->token_repository->get_access_token();
+            if ( $current_token && is_array( $current_token ) ) {
+                $current_token['refresh_token'] = $refresh_token;
+                $client->setAccessToken( $current_token );
+            }
+
             $new_token = $client->fetchAccessTokenWithRefreshToken( $refresh_token );
             
             if ( array_key_exists( 'error', $new_token ) ) {
@@ -108,17 +115,21 @@ class Google_Auth_Service implements Auth_Service_Interface {
                 return false;
             }
 
-            // Add the refresh token back if not included
+            // Ensure refresh token is preserved
             if ( ! isset( $new_token['refresh_token'] ) ) {
                 $new_token['refresh_token'] = $refresh_token;
             }
 
+            // Store the refreshed token
             $token_stored = $this->store_tokens( $new_token );
             
             if ( ! $token_stored ) {
                 $this->logger->log_auth_action( 'refresh_failed', 0, 'Failed to store refreshed token' );
                 return false;
             }
+
+            // Update the client with the new token
+            $client->setAccessToken( $new_token );
 
             $this->logger->log_auth_action( 'refresh_success', 0, 'Token refreshed successfully' );
             return true;
