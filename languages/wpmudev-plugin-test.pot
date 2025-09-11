@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2025-09-10T08:24:44+00:00\n"
+"POT-Creation-Date: 2025-09-11T12:38:22+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.11.0\n"
 
@@ -28,98 +28,349 @@ msgstr ""
 msgid "Shiv Srivastava"
 msgstr ""
 
-#: app/admin-pages/class-googledrive-settings.php:81
+#: app/admin-pages/class-googledrive-settings.php:87
+#: app/admin-pages/class-googledrive-settings.php:169
+#: app/admin-pages/class-googledrive-settings copy.php:81
+#: assets/js/drivetestpage.min.js:618
+#: assets/js/drivetestpage.min.js:640
 msgid "Google Drive Test"
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:207
-msgid "Client ID and Client Secret are required."
+#: app/admin-pages/class-googledrive-settings.php:247
+msgid "Are you sure you want to delete this file?"
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:216
-msgid "Invalid Client ID format."
+#: app/admin-pages/class-googledrive-settings.php:248
+msgid "File uploaded successfully"
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:235
-msgid "Failed to save credentials."
+#: app/admin-pages/class-googledrive-settings.php:249
+#: assets/js/drivetestpage.min.js:463
+#: assets/js/drivetestpage.min.js:469
+#: assets/js/drivetestpage.min.js:476
+#: assets/js/drivetestpage.min.js:479
+msgid "Upload failed"
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:249
-msgid "Credentials saved successfully."
+#: app/admin-pages/class-googledrive-settings.php:250
+msgid "Network error. Please try again."
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:261
-msgid "An unexpected error occurred."
+#: app/admin-pages/class-googledrive-settings.php:251
+msgid "Authentication required"
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:321
-msgid "Google OAuth Client ID"
+#: app/admin-pages/class-googledrive-settings.php:252
+msgid "Invalid file type or size"
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:328
-msgid "Google OAuth Client Secret"
+#: app/admin-pages/class-googledrive-settings.php:254
+msgid "Please use this URL %s in your Google API's Authorized redirect URIs field."
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:582
-msgid "Access was denied. Please try again and grant the necessary permissions."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:583
-msgid "Invalid request. Please try the authentication process again."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:584
-msgid "Unauthorized client. Please check your Google OAuth credentials."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:585
-msgid "Unsupported response type. Please contact support."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:586
-msgid "Invalid scope requested. Please contact support."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:587
-msgid "Google server error. Please try again later."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:588
-msgid "Service temporarily unavailable. Please try again later."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:593
-msgid "Authentication failed: %s"
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:702
+#: app/endpoints/v1/class-drive-auth-api.php:187
 msgid "Google OAuth credentials not configured. Please save your credentials first."
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:727
+#: app/endpoints/v1/class-drive-auth-api.php:199
 msgid "Authorization URL generated successfully. Redirect user to this URL."
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:737
+#: app/endpoints/v1/class-drive-auth-api.php:207
 msgid "Failed to generate authorization URL: "
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:1005
-msgid "Authentication revoked successfully."
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:1013
-msgid "Failed to revoke authentication: "
-msgstr ""
-
-#: app/endpoints/v1/class-googledrive-rest.php:1029
+#: app/endpoints/v1/class-drive-auth-api.php:305
 msgid "Google client not initialized."
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:1039
+#: app/endpoints/v1/class-drive-auth-api.php:315
 msgid "Failed to refresh access token. Please re-authenticate."
 msgstr ""
 
-#: app/endpoints/v1/class-googledrive-rest.php:1049
+#: app/endpoints/v1/class-drive-auth-api.php:323
 msgid "Access token refreshed successfully."
+msgstr ""
+
+#: app/endpoints/v1/class-drive-auth-api.php:342
+msgid "Failed to revoke authentication."
+msgstr ""
+
+#: app/endpoints/v1/class-drive-auth-api.php:350
+msgid "Authentication revoked successfully."
+msgstr ""
+
+#: app/endpoints/v1/class-drive-auth-api.php:358
+msgid "Failed to revoke authentication: "
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:159
+#: assets/js/drivetestpage.min.js:341
+msgid "Authentication failed"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:211
+msgid "Failed to check authentication status"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:222
+msgid "Please fill in both Client ID and Client Secret"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:246
+msgid "Credentials saved successfully"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:251
+#: assets/js/drivetestpage.min.js:255
+msgid "Failed to save credentials"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:305
+msgid "Authentication completed successfully"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:335
+msgid "Please complete authentication in the popup window"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:337
+msgid "Failed to start authentication"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:389
+#: assets/js/drivetestpage.min.js:393
+msgid "Failed to load files"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:411
+msgid "Please select a file to upload"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:418
+msgid "File size exceeds 100MB limit"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:423
+msgid "Starting upload..."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:447
+msgid "File uploaded successfully: %s"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:455
+msgid "Upload completed successfully"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:523
+msgid "File downloaded successfully"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:525
+#: assets/js/drivetestpage.min.js:529
+msgid "Download failed"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:538
+msgid "Please enter a folder name"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:560
+msgid "Folder created successfully: %s"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:567
+#: assets/js/drivetestpage.min.js:571
+msgid "Failed to create folder"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:592
+msgid "Folder"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:594
+msgid "Image"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:596
+msgid "Video"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:598
+msgid "Audio"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:600
+msgid "PDF"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:602
+msgid "Document"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:604
+msgid "Spreadsheet"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:606
+msgid "Presentation"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:608
+msgid "File"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:621
+#: assets/js/drivetestpage.min.js:643
+msgid "Test Google Drive API integration for applicant assessment"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:628
+msgid "Checking authentication status..."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:658
+msgid "Set Google Drive Credentials"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:665
+msgid "You can get Client ID from <a>Google Cloud Console</a>. Make sure to enable Google Drive API."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:670
+msgid "Client ID"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:673
+msgid "Enter your Google Client ID"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:680
+msgid "You can get Client Secret from <a>Google Cloud Console</a>."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:685
+msgid "Client Secret"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:689
+msgid "Enter your Google Client Secret"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:699
+msgid "Please use this URL in your Google API's Authorized redirect URIs field:"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:708
+msgid "Copy this URL exactly as shown and add it to your Google Cloud Console project's OAuth 2.0 Client IDs configuration."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:717
+msgid "Required scopes for Google Drive API:"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:731
+msgid "Save Credentials"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:741
+#: assets/js/drivetestpage.min.js:770
+msgid "Authenticate with Google Drive"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:746
+msgid "Please authenticate with Google Drive to proceed with the test."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:747
+msgid "This test will require the following permissions:"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:749
+msgid "View and manage Google Drive files"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:750
+msgid "Upload new files to Drive"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:751
+msgid "Create folders in Drive"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:761
+msgid "Change Credentials"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:782
+msgid "Upload File to Drive"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:788
+msgid "Select File"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:798
+msgid "Selected:"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:806
+msgid "Upload Progress:"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:813
+msgid "View Details"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:834
+msgid "Upload to Drive"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:844
+msgid "Create New Folder"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:850
+msgid "Folder Name"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:853
+msgid "Enter folder name"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:864
+msgid "Create Folder"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:874
+msgid "Your Drive Files"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:883
+msgid "Refresh Files"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:891
+msgid "Loading files..."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:909
+msgid "Unknown date"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:923
+msgid "View in Drive"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:932
+msgid "Download"
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:945
+msgid "No files found in your Drive. Upload a file or create a folder to get started."
+msgstr ""
+
+#: assets/js/drivetestpage.min.js:962
+msgid "Load More Files"
 msgstr ""

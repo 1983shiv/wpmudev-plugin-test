@@ -6,9 +6,9 @@
 namespace WPMUDEV\PluginTest\Endpoints\V1;
 
 use WPMUDEV\PluginTest\Base;
-use WPMUDEV\PluginTest\Services\Interfaces\Auth_Service_Interface;
-use WPMUDEV\PluginTest\Services\Interfaces\Token_Repository_Interface;
-use WPMUDEV\PluginTest\Services\Interfaces\Logger_Service_Interface;
+use WPMUDEV\PluginTest\Interfaces\Auth_Service_Interface;
+use WPMUDEV\PluginTest\Interfaces\Token_Repository_Interface;
+use WPMUDEV\PluginTest\Interfaces\Logger_Service_Interface;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_Error;
@@ -651,7 +651,7 @@ class Drive_API_Enhanced extends Base {
     }
 
     /**
-     * Upload file (Enhanced - from original)
+     * Upload file with embedded progress tracking (Enhanced - No new endpoints)
      */
     public function upload_file( WP_REST_Request $request ) {
         if ( ! $this->ensure_valid_token() ) {
@@ -671,13 +671,34 @@ class Drive_API_Enhanced extends Base {
             return new WP_Error( 'upload_error', 'File upload error: ' . $this->get_upload_error_message( $file['error'] ), array( 'status' => 400 ) );
         }
 
-        // Validate file size (max 100MB for this example)
-        $max_size = 100 * 1024 * 1024; // 100MB
-        if ( $file['size'] > $max_size ) {
-            return new WP_Error( 'file_too_large', 'File size exceeds maximum allowed size (100MB)', array( 'status' => 400 ) );
+        // Enhanced file validation
+        $validation_result = $this->validate_upload_file( $file );
+        if ( is_wp_error( $validation_result ) ) {
+            return $validation_result;
         }
 
+        // Track upload progress in response
+        $upload_progress = array(
+            'status' => 'starting',
+            'progress' => 0,
+            'message' => 'Initializing upload...',
+            'file_name' => $file['name'],
+            'file_size' => $file['size'],
+            'started_at' => current_time( 'c' ),
+            'stages' => array(),
+        );
+
         try {
+            // Stage 1: File validation completed
+            $upload_progress['stages'][] = array(
+                'stage' => 'validation',
+                'status' => 'completed',
+                'progress' => 10,
+                'message' => 'File validation completed',
+                'timestamp' => current_time( 'c' ),
+            );
+
+            // Prepare Google Drive file metadata
             $drive_file = new Google_Service_Drive_DriveFile();
             $drive_file->setName( sanitize_file_name( $file['name'] ) );
 
@@ -693,36 +714,331 @@ class Drive_API_Enhanced extends Base {
                 $drive_file->setDescription( $description );
             }
 
-            $upload_params = array(
-                'data'       => file_get_contents( $file['tmp_name'] ),
-                'mimeType'   => $file['type'],
-                'uploadType' => 'multipart',
-                'fields'     => 'id,name,mimeType,size,webViewLink,parents,description,createdTime',
+            // Stage 2: Metadata preparation completed
+            $upload_progress['stages'][] = array(
+                'stage' => 'preparation',
+                'status' => 'completed',
+                'progress' => 20,
+                'message' => 'File metadata prepared',
+                'timestamp' => current_time( 'c' ),
             );
 
-            $result = $this->drive_service->files->create( $drive_file, $upload_params );
+            // Stage 3: Start upload process
+            $upload_progress['stages'][] = array(
+                'stage' => 'upload_start',
+                'status' => 'in_progress',
+                'progress' => 30,
+                'message' => 'Starting upload to Google Drive...',
+                'timestamp' => current_time( 'c' ),
+            );
+
+            // Determine upload method based on file size
+            if ( $file['size'] > 5 * 1024 * 1024 ) { // 5MB threshold
+                $result = $this->upload_large_file_with_progress( $file, $drive_file, $upload_progress );
+            } else {
+                $result = $this->upload_small_file_with_progress( $file, $drive_file, $upload_progress );
+            }
+
+            // Stage 4: Upload completed
+            $upload_progress['stages'][] = array(
+                'stage' => 'upload_complete',
+                'status' => 'completed',
+                'progress' => 100,
+                'message' => 'Upload completed successfully',
+                'timestamp' => current_time( 'c' ),
+            );
+
+            $upload_progress['status'] = 'completed';
+            $upload_progress['progress'] = 100;
+            $upload_progress['message'] = 'File uploaded successfully';
+            $upload_progress['completed_at'] = current_time( 'c' );
+            $upload_progress['file_id'] = $result->getId();
 
             $this->logger->log_auth_action( 'file_uploaded', get_current_user_id(), 'File uploaded: ' . $result->getName() );
 
             return new WP_REST_Response( array(
                 'success' => true,
                 'message' => 'File uploaded successfully',
-                'file'    => array(
-                    'id'          => $result->getId(),
-                    'name'        => $result->getName(),
-                    'mimeType'    => $result->getMimeType(),
-                    'size'        => $result->getSize(),
+                'upload_progress' => $upload_progress,
+                'file' => array(
+                    'id' => $result->getId(),
+                    'name' => $result->getName(),
+                    'mimeType' => $result->getMimeType(),
+                    'size' => $result->getSize(),
+                    'sizeFormatted' => $this->format_file_size( $result->getSize() ),
                     'webViewLink' => $result->getWebViewLink(),
-                    'parents'     => $result->getParents(),
+                    'parents' => $result->getParents(),
                     'description' => $result->getDescription(),
                     'createdTime' => $result->getCreatedTime(),
                 ),
             ), 200 );
 
         } catch ( Exception $e ) {
+            // Add error stage to progress
+            $upload_progress['stages'][] = array(
+                'stage' => 'error',
+                'status' => 'failed',
+                'progress' => 0,
+                'message' => 'Upload failed: ' . $e->getMessage(),
+                'error' => $e->getMessage(),
+                'timestamp' => current_time( 'c' ),
+            );
+
+            $upload_progress['status'] = 'failed';
+            $upload_progress['message'] = 'Upload failed: ' . $e->getMessage();
+            $upload_progress['failed_at'] = current_time( 'c' );
+
             $this->logger->log_auth_action( 'upload_failed', get_current_user_id(), $e->getMessage() );
-            return new WP_Error( 'upload_failed', 'Upload failed: ' . $e->getMessage(), array( 'status' => 500 ) );
+            
+            return new WP_Error( 'upload_failed', 'Upload failed: ' . $e->getMessage(), array( 
+                'status' => 500,
+                'upload_progress' => $upload_progress,
+            ) );
         }
+    }
+
+    /**
+     * Enhanced file validation with detailed feedback
+     */
+    private function validate_upload_file( $file ) {
+        // File size validation (configurable limits)
+        $max_size = apply_filters( 'wpmudev_drive_max_upload_size', 100 * 1024 * 1024 ); // 100MB default
+        if ( $file['size'] > $max_size ) {
+            return new WP_Error( 
+                'file_too_large', 
+                sprintf( 'File size (%s) exceeds maximum allowed size (%s)', 
+                    $this->format_file_size( $file['size'] ), 
+                    $this->format_file_size( $max_size ) 
+                ), 
+                array( 
+                    'status' => 400,
+                    'validation_details' => array(
+                        'file_size' => $file['size'],
+                        'file_size_formatted' => $this->format_file_size( $file['size'] ),
+                        'max_size' => $max_size,
+                        'max_size_formatted' => $this->format_file_size( $max_size ),
+                    )
+                ) 
+            );
+        }
+
+        // File type validation
+        $allowed_types = apply_filters( 'wpmudev_drive_allowed_upload_types', array(
+            // Documents
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'text/plain',
+            'text/csv',
+            
+            // Images
+            'image/jpeg',
+            'image/png',
+            'image/gif',
+            'image/webp',
+            'image/svg+xml',
+            
+            // Videos
+            'video/mp4',
+            'video/avi',
+            'video/quicktime',
+            'video/x-msvideo',
+            
+            // Audio
+            'audio/mpeg',
+            'audio/wav',
+            'audio/mp3',
+            
+            // Archives
+            'application/zip',
+            'application/x-rar-compressed',
+            'application/x-7z-compressed',
+            
+            // Code files
+            'text/html',
+            'text/css',
+            'text/javascript',
+            'application/json',
+            'application/xml',
+        ) );
+
+        if ( ! in_array( $file['type'], $allowed_types ) ) {
+            return new WP_Error( 
+                'invalid_file_type', 
+                sprintf( 'File type "%s" is not allowed.', $file['type'] ), 
+                array( 
+                    'status' => 400,
+                    'validation_details' => array(
+                        'file_type' => $file['type'],
+                        'allowed_types' => array_slice( $allowed_types, 0, 10 ), // First 10 for response size
+                        'total_allowed_types' => count( $allowed_types ),
+                    )
+                ) 
+            );
+        }
+
+        // File name validation
+        if ( strlen( $file['name'] ) > 255 ) {
+            return new WP_Error( 
+                'filename_too_long', 
+                'Filename cannot exceed 255 characters', 
+                array( 
+                    'status' => 400,
+                    'validation_details' => array(
+                        'filename_length' => strlen( $file['name'] ),
+                        'max_length' => 255,
+                    )
+                ) 
+            );
+        }
+
+        // Check for potentially dangerous file extensions
+        $dangerous_extensions = array( 'exe', 'bat', 'cmd', 'com', 'pif', 'scr', 'vbs', 'js', 'jar', 'php' );
+        $file_extension = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        
+        if ( in_array( $file_extension, $dangerous_extensions ) ) {
+            return new WP_Error( 
+                'dangerous_file_type', 
+                'This file type is not allowed for security reasons', 
+                array( 
+                    'status' => 400,
+                    'validation_details' => array(
+                        'file_extension' => $file_extension,
+                        'dangerous_extensions' => $dangerous_extensions,
+                    )
+                ) 
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Upload small files (< 5MB) with progress tracking
+     */
+    private function upload_small_file_with_progress( $file, $drive_file, &$upload_progress ) {
+        // Stage: Processing file content
+        $upload_progress['stages'][] = array(
+            'stage' => 'processing',
+            'status' => 'in_progress',
+            'progress' => 50,
+            'message' => 'Processing file content...',
+            'timestamp' => current_time( 'c' ),
+        );
+
+        $upload_params = array(
+            'data' => file_get_contents( $file['tmp_name'] ),
+            'mimeType' => $file['type'],
+            'uploadType' => 'multipart',
+            'fields' => 'id,name,mimeType,size,webViewLink,parents,description,createdTime',
+        );
+
+        // Stage: Uploading to Drive
+        $upload_progress['stages'][] = array(
+            'stage' => 'uploading',
+            'status' => 'in_progress',
+            'progress' => 80,
+            'message' => 'Uploading to Google Drive...',
+            'timestamp' => current_time( 'c' ),
+        );
+
+        $result = $this->drive_service->files->create( $drive_file, $upload_params );
+
+        // Stage: Finalizing
+        $upload_progress['stages'][] = array(
+            'stage' => 'finalizing',
+            'status' => 'completed',
+            'progress' => 95,
+            'message' => 'Finalizing upload...',
+            'timestamp' => current_time( 'c' ),
+        );
+
+        return $result;
+    }
+
+    /**
+     * Upload large files (>= 5MB) with detailed progress tracking
+     */
+    private function upload_large_file_with_progress( $file, $drive_file, &$upload_progress ) {
+        $client = $this->client;
+        $client->setDefer( true );
+
+        // Stage: Initialize resumable upload
+        $upload_progress['stages'][] = array(
+            'stage' => 'resumable_init',
+            'status' => 'in_progress',
+            'progress' => 40,
+            'message' => 'Initializing resumable upload...',
+            'timestamp' => current_time( 'c' ),
+        );
+
+        // Create resumable upload request
+        $request = $this->drive_service->files->create( $drive_file );
+        $media = new \Google_Http_MediaFileUpload(
+            $client,
+            $request,
+            $file['type'],
+            null,
+            true,
+            1024 * 1024 // 1MB chunks
+        );
+        $media->setFileSize( $file['size'] );
+
+        // Stage: Start chunked upload
+        $upload_progress['stages'][] = array(
+            'stage' => 'chunked_upload',
+            'status' => 'in_progress',
+            'progress' => 50,
+            'message' => 'Starting chunked upload...',
+            'chunk_size' => '1MB',
+            'total_chunks' => ceil( $file['size'] / (1024 * 1024) ),
+            'timestamp' => current_time( 'c' ),
+        );
+
+        // Open file for reading
+        $handle = fopen( $file['tmp_name'], 'rb' );
+        $upload_status = false;
+        $uploaded_bytes = 0;
+        $chunk_number = 0;
+        $total_chunks = ceil( $file['size'] / (1024 * 1024) );
+
+        while ( ! $upload_status && ! feof( $handle ) ) {
+            $chunk = fread( $handle, 1024 * 1024 ); // 1MB chunks
+            $upload_status = $media->nextChunk( $chunk );
+            
+            $uploaded_bytes += strlen( $chunk );
+            $chunk_number++;
+            $progress = min( 95, 50 + ( $uploaded_bytes / $file['size'] ) * 40 ); // 50-90% range for upload
+            
+            // Update progress for significant chunks
+            if ( $chunk_number % 5 === 0 || $upload_status ) { // Every 5th chunk or final
+                $upload_progress['stages'][] = array(
+                    'stage' => 'chunk_progress',
+                    'status' => 'in_progress',
+                    'progress' => (int) $progress,
+                    'message' => sprintf( 'Uploading chunk %d of %d (%s / %s)', 
+                        $chunk_number, 
+                        $total_chunks,
+                        $this->format_file_size( $uploaded_bytes ), 
+                        $this->format_file_size( $file['size'] ) 
+                    ),
+                    'uploaded_bytes' => $uploaded_bytes,
+                    'total_bytes' => $file['size'],
+                    'chunk_number' => $chunk_number,
+                    'total_chunks' => $total_chunks,
+                    'timestamp' => current_time( 'c' ),
+                );
+            }
+        }
+
+        fclose( $handle );
+        $client->setDefer( false );
+
+        return $upload_status;
     }
 
     /**
