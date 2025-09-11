@@ -493,6 +493,7 @@ class Drive_API_Enhanced extends Base {
         }
 
         $files = $request->get_file_params();
+        $params = $request->get_params();
         
         if ( empty( $files['file'] ) ) {
             return new WP_Error( 'no_file', 'No file provided', array( 'status' => 400 ) );
@@ -501,36 +502,60 @@ class Drive_API_Enhanced extends Base {
         $file = $files['file'];
         
         if ( $file['error'] !== UPLOAD_ERR_OK ) {
-            return new WP_Error( 'upload_error', 'File upload error', array( 'status' => 400 ) );
+            return new WP_Error( 'upload_error', 'File upload error: ' . $this->get_upload_error_message( $file['error'] ), array( 'status' => 400 ) );
+        }
+
+        // Validate file size (max 100MB for this example)
+        $max_size = 100 * 1024 * 1024; // 100MB
+        if ( $file['size'] > $max_size ) {
+            return new WP_Error( 'file_too_large', 'File size exceeds maximum allowed size (100MB)', array( 'status' => 400 ) );
         }
 
         try {
             $drive_file = new Google_Service_Drive_DriveFile();
-            $drive_file->setName( $file['name'] );
+            $drive_file->setName( sanitize_file_name( $file['name'] ) );
 
-            $result = $this->drive_service->files->create(
-                $drive_file,
-                array(
-                    'data'       => file_get_contents( $file['tmp_name'] ),
-                    'mimeType'   => $file['type'],
-                    'uploadType' => 'multipart',
-                    'fields'     => 'id,name,mimeType,size,webViewLink',
-                )
+            // Set parent folder if provided
+            $parent_folder = sanitize_text_field( $params['parent_folder'] ?? '' );
+            if ( ! empty( $parent_folder ) ) {
+                $drive_file->setParents( array( $parent_folder ) );
+            }
+
+            // Add description if provided
+            $description = sanitize_textarea_field( $params['description'] ?? '' );
+            if ( ! empty( $description ) ) {
+                $drive_file->setDescription( $description );
+            }
+
+            $upload_params = array(
+                'data'       => file_get_contents( $file['tmp_name'] ),
+                'mimeType'   => $file['type'],
+                'uploadType' => 'multipart',
+                'fields'     => 'id,name,mimeType,size,webViewLink,parents,description,createdTime',
             );
+
+            $result = $this->drive_service->files->create( $drive_file, $upload_params );
+
+            $this->logger->log_auth_action( 'file_uploaded', get_current_user_id(), 'File uploaded: ' . $result->getName() );
 
             return new WP_REST_Response( array(
                 'success' => true,
+                'message' => 'File uploaded successfully',
                 'file'    => array(
                     'id'          => $result->getId(),
                     'name'        => $result->getName(),
                     'mimeType'    => $result->getMimeType(),
                     'size'        => $result->getSize(),
                     'webViewLink' => $result->getWebViewLink(),
+                    'parents'     => $result->getParents(),
+                    'description' => $result->getDescription(),
+                    'createdTime' => $result->getCreatedTime(),
                 ),
             ), 200 );
 
         } catch ( Exception $e ) {
-            return new WP_Error( 'upload_failed', $e->getMessage(), array( 'status' => 500 ) );
+            $this->logger->log_auth_action( 'upload_failed', get_current_user_id(), $e->getMessage() );
+            return new WP_Error( 'upload_failed', 'Upload failed: ' . $e->getMessage(), array( 'status' => 500 ) );
         }
     }
 
@@ -542,33 +567,106 @@ class Drive_API_Enhanced extends Base {
             return new WP_Error( 'no_access_token', 'Not authenticated with Google Drive', array( 'status' => 401 ) );
         }
 
-        $file_id = $request->get_param( 'file_id' );
+        $file_id = sanitize_text_field( $request->get_param( 'file_id' ) );
         
         if ( empty( $file_id ) ) {
             return new WP_Error( 'missing_file_id', 'File ID is required', array( 'status' => 400 ) );
         }
 
         try {
+            // Get file metadata first
             $file = $this->drive_service->files->get( $file_id, array(
-                'fields' => 'id,name,mimeType,size',
+                'fields' => 'id,name,mimeType,size,parents',
             ) );
 
+            // Check if it's a Google Workspace document (needs export)
+            $google_docs_types = array(
+                'application/vnd.google-apps.document',
+                'application/vnd.google-apps.spreadsheet',
+                'application/vnd.google-apps.presentation',
+                'application/vnd.google-apps.drawing',
+            );
+
+            if ( in_array( $file->getMimeType(), $google_docs_types ) ) {
+                return $this->export_google_doc( $file_id, $file );
+            }
+
+            // Download regular file
             $response = $this->drive_service->files->get( $file_id, array(
                 'alt' => 'media',
             ) );
 
             $content = $response->getBody()->getContents();
 
+            $this->logger->log_auth_action( 'file_downloaded', get_current_user_id(), 'File downloaded: ' . $file->getName() );
+
+            // Return file content as base64 for JSON response
             return new WP_REST_Response( array(
-                'success'  => true,
-                'content'  => base64_encode( $content ),
-                'filename' => $file->getName(),
-                'mimeType' => $file->getMimeType(),
+                'success'   => true,
+                'message'   => 'File downloaded successfully',
+                'file'      => array(
+                    'id'       => $file->getId(),
+                    'name'     => $file->getName(),
+                    'mimeType' => $file->getMimeType(),
+                    'size'     => $file->getSize(),
+                    'content'  => base64_encode( $content ),
+                ),
             ), 200 );
 
         } catch ( Exception $e ) {
-            return new WP_Error( 'download_failed', $e->getMessage(), array( 'status' => 500 ) );
+            $this->logger->log_auth_action( 'download_failed', get_current_user_id(), $e->getMessage() );
+            return new WP_Error( 'download_failed', 'Download failed: ' . $e->getMessage(), array( 'status' => 500 ) );
         }
+    }
+
+    /**
+     * Export Google Workspace documents
+     */
+    private function export_google_doc( $file_id, $file ) {
+        $export_formats = array(
+            'application/vnd.google-apps.document'     => 'application/pdf',
+            'application/vnd.google-apps.spreadsheet' => 'application/pdf',
+            'application/vnd.google-apps.presentation' => 'application/pdf',
+            'application/vnd.google-apps.drawing'     => 'application/pdf',
+        );
+
+        $mime_type = $file->getMimeType();
+        $export_type = $export_formats[ $mime_type ] ?? 'application/pdf';
+
+        $response = $this->drive_service->files->export( $file_id, $export_type, array(
+            'alt' => 'media',
+        ) );
+
+        $content = $response->getBody()->getContents();
+
+        return new WP_REST_Response( array(
+            'success'   => true,
+            'message'   => 'Google document exported successfully',
+            'file'      => array(
+                'id'          => $file->getId(),
+                'name'        => $file->getName() . '.pdf',
+                'mimeType'    => $export_type,
+                'originalType' => $mime_type,
+                'content'     => base64_encode( $content ),
+            ),
+        ), 200 );
+    }
+
+    /**
+     * Get upload error message
+     */
+    private function get_upload_error_message( $error_code ) {
+        $errors = array(
+            UPLOAD_ERR_INI_SIZE   => 'File exceeds upload_max_filesize directive',
+            UPLOAD_ERR_FORM_SIZE  => 'File exceeds MAX_FILE_SIZE directive',
+            UPLOAD_ERR_PARTIAL    => 'File was only partially uploaded',
+            UPLOAD_ERR_NO_FILE    => 'No file was uploaded',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+            UPLOAD_ERR_EXTENSION  => 'Upload stopped by extension',
+        );
+
+        return $errors[ $error_code ] ?? 'Unknown upload error';
     }
 
     /**
@@ -579,33 +677,57 @@ class Drive_API_Enhanced extends Base {
             return new WP_Error( 'no_access_token', 'Not authenticated with Google Drive', array( 'status' => 401 ) );
         }
 
-        $name = $request->get_param( 'name' );
+        $name = sanitize_text_field( $request->get_param( 'name' ) );
+        $parent_folder = sanitize_text_field( $request->get_param( 'parent_folder' ) );
+        $description = sanitize_textarea_field( $request->get_param( 'description' ) );
         
         if ( empty( $name ) ) {
             return new WP_Error( 'missing_name', 'Folder name is required', array( 'status' => 400 ) );
         }
 
+        // Validate folder name
+        if ( strlen( $name ) > 255 ) {
+            return new WP_Error( 'name_too_long', 'Folder name cannot exceed 255 characters', array( 'status' => 400 ) );
+        }
+
         try {
             $folder = new Google_Service_Drive_DriveFile();
-            $folder->setName( sanitize_text_field( $name ) );
+            $folder->setName( $name );
             $folder->setMimeType( 'application/vnd.google-apps.folder' );
 
+            // Set parent folder if provided
+            if ( ! empty( $parent_folder ) ) {
+                $folder->setParents( array( $parent_folder ) );
+            }
+
+            // Set description if provided
+            if ( ! empty( $description ) ) {
+                $folder->setDescription( $description );
+            }
+
             $result = $this->drive_service->files->create( $folder, array(
-                'fields' => 'id,name,mimeType,webViewLink',
+                'fields' => 'id,name,mimeType,webViewLink,parents,description,createdTime',
             ) );
+
+            $this->logger->log_auth_action( 'folder_created', get_current_user_id(), 'Folder created: ' . $result->getName() );
 
             return new WP_REST_Response( array(
                 'success' => true,
+                'message' => 'Folder created successfully',
                 'folder'  => array(
                     'id'          => $result->getId(),
                     'name'        => $result->getName(),
                     'mimeType'    => $result->getMimeType(),
                     'webViewLink' => $result->getWebViewLink(),
+                    'parents'     => $result->getParents(),
+                    'description' => $result->getDescription(),
+                    'createdTime' => $result->getCreatedTime(),
                 ),
             ), 200 );
 
         } catch ( Exception $e ) {
-            return new WP_Error( 'create_failed', $e->getMessage(), array( 'status' => 500 ) );
+            $this->logger->log_auth_action( 'folder_creation_failed', get_current_user_id(), $e->getMessage() );
+            return new WP_Error( 'create_failed', 'Folder creation failed: ' . $e->getMessage(), array( 'status' => 500 ) );
         }
     }
 }
