@@ -6,15 +6,10 @@ import "./scss/style.scss";
 
 const domElement = document.getElementById( window.wpmudevDriveTest.dom_element_id );
 
-const WPMUDEV_DriveTest = () => {
-    // State management
+const WPMUDEV_DriveTest = () => {    
     const [isAuthenticated, setIsAuthenticated] = useState(window.wpmudevDriveTest.authStatus || false);
     const [hasCredentials, setHasCredentials] = useState(window.wpmudevDriveTest.hasCredentials || false);
     const [showCredentials, setShowCredentials] = useState(!window.wpmudevDriveTest.hasCredentials);
-    // const [isAuthenticated, setIsAuthenticated] = useState(Boolean(window.wpmudevDriveTest.authStatus));
-    // const [hasCredentials, setHasCredentials] = useState(Boolean(window.wpmudevDriveTest.hasCredentials));
-    // const [showCredentials, setShowCredentials] = useState(!Boolean(window.wpmudevDriveTest.hasCredentials));
-
     const [nextPageToken, setNextPageToken] = useState(null);
     const [hasMoreFiles, setHasMoreFiles] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -326,7 +321,7 @@ const WPMUDEV_DriveTest = () => {
     // Add this function for loading more files:
     const loadMoreFiles = () => {
         if (nextPageToken && hasMoreFiles) {
-            loadFiles(nextPageToken, true); // true = append to existing files
+            loadFiles(nextPageToken, true); 
         }
     };
 
@@ -340,7 +335,7 @@ const WPMUDEV_DriveTest = () => {
         }
 
         // Validate file size (100MB limit)
-        const maxSize = 100 * 1024 * 1024; // 100MB
+        const maxSize = 100 * 1024 * 1024; 
         if (uploadFile.size > maxSize) {
             showNotice(__('File size exceeds 100MB limit', 'wpmudev-plugin-test'), 'error');
             return;
@@ -353,7 +348,7 @@ const WPMUDEV_DriveTest = () => {
             const formData = new FormData();
             formData.append('file', uploadFile);
 
-            // FIXED: Use wpmudevDriveTest.restUrl instead of wpApiSettings.root
+            
             const response = await fetch(`${window.wpmudevDriveTest.restUrl}wpmudev/v1/drive/upload`, {
                 method: 'POST',
                 headers: {
@@ -408,7 +403,6 @@ const WPMUDEV_DriveTest = () => {
             });
         } finally {
             setIsLoading(false);
-            // Clear upload progress after 3 seconds
             setTimeout(() => setUploadProgress(null), 3000);
         }
     };
@@ -427,7 +421,6 @@ const WPMUDEV_DriveTest = () => {
                     'X-WP-Nonce': window.wpmudevDriveTest.nonce,
                     'Content-Type': 'application/json',
                 },
-                // REMOVED: body is not allowed with GET requests
             });
 
             const data = await response.json();
