@@ -2,18 +2,18 @@ import { createRoot, render, StrictMode, useState, useEffect, createInterpolateE
 import { Button, TextControl, Spinner, Notice, ProgressBar } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 
-import "./scss/style.scss"
+import "./scss/style.scss";
 
 const domElement = document.getElementById( window.wpmudevDriveTest.dom_element_id );
 
 const WPMUDEV_DriveTest = () => {
     // State management
-    // const [isAuthenticated, setIsAuthenticated] = useState(window.wpmudevDriveTest.authStatus || false);
-    // const [hasCredentials, setHasCredentials] = useState(window.wpmudevDriveTest.hasCredentials || false);
-    // const [showCredentials, setShowCredentials] = useState(!window.wpmudevDriveTest.hasCredentials);
-    const [isAuthenticated, setIsAuthenticated] = useState(Boolean(window.wpmudevDriveTest.authStatus));
-    const [hasCredentials, setHasCredentials] = useState(Boolean(window.wpmudevDriveTest.hasCredentials));
-    const [showCredentials, setShowCredentials] = useState(!Boolean(window.wpmudevDriveTest.hasCredentials));
+    const [isAuthenticated, setIsAuthenticated] = useState(window.wpmudevDriveTest.authStatus || false);
+    const [hasCredentials, setHasCredentials] = useState(window.wpmudevDriveTest.hasCredentials || false);
+    const [showCredentials, setShowCredentials] = useState(!window.wpmudevDriveTest.hasCredentials);
+    // const [isAuthenticated, setIsAuthenticated] = useState(Boolean(window.wpmudevDriveTest.authStatus));
+    // const [hasCredentials, setHasCredentials] = useState(Boolean(window.wpmudevDriveTest.hasCredentials));
+    // const [showCredentials, setShowCredentials] = useState(!Boolean(window.wpmudevDriveTest.hasCredentials));
 
     const [nextPageToken, setNextPageToken] = useState(null);
     const [hasMoreFiles, setHasMoreFiles] = useState(false);
@@ -35,34 +35,13 @@ const WPMUDEV_DriveTest = () => {
         window.wpmudevDriveTest.nonce = window.wpmudevDriveTest.nonce || '';
     }
 
-    const debugAuthFlow = () => {
-        console.log('=== DEBUG AUTH FLOW ===');
-        console.log('Current URL:', window.location.href);
-        console.log('URL params:', new URLSearchParams(window.location.search));
-        console.log('wpmudevDriveTest object:', window.wpmudevDriveTest);
-        console.log('wpmudevDriveTest.authStatus (raw):', window.wpmudevDriveTest.authStatus);
-        console.log('wpmudevDriveTest.hasCredentials (raw):', window.wpmudevDriveTest.hasCredentials);
-        console.log('Boolean(authStatus):', Boolean(window.wpmudevDriveTest.authStatus));
-        console.log('Boolean(hasCredentials):', Boolean(window.wpmudevDriveTest.hasCredentials));
-        console.log('Is authenticated (state):', isAuthenticated);
-        console.log('Has credentials (state):', hasCredentials);
-        console.log('Show credentials (state):', showCredentials);
-        console.log('=======================');
-    };
+
 
     // Call it in useEffect:
-    useEffect(() => {
-        debugAuthFlow();
-        
+    useEffect(() => {        
         // ADDED: Force state update based on actual values
         const actualAuthStatus = Boolean(window.wpmudevDriveTest.authStatus);
         const actualHasCredentials = Boolean(window.wpmudevDriveTest.hasCredentials);
-        
-        console.log('Forcing state update:', {
-            actualAuthStatus,
-            actualHasCredentials,
-            shouldShowCredentials: !actualHasCredentials
-        });
         
         setIsAuthenticated(actualAuthStatus);
         setHasCredentials(actualHasCredentials);
@@ -78,9 +57,8 @@ const WPMUDEV_DriveTest = () => {
 
     // Auto-load files when authenticated
     useEffect(() => {
-        console.log('isAuthenticated changed to:', isAuthenticated);
         if (isAuthenticated) {
-            console.log('Loading files because user is authenticated');
+            // console.log('Loading files because user is authenticated');
             loadFiles();
         }
     }, [isAuthenticated]);
@@ -128,8 +106,6 @@ const WPMUDEV_DriveTest = () => {
      * Check current authentication status
      */
     const checkAuthStatus = async () => {
-        console.log('checkAuthStatus called');
-        console.log(window.wpmudevDriveTest);
         setAuthStatusLoading(true);
         try {
             const response = await fetch(`${window.wpmudevDriveTest.restUrl}wpmudev/v1/drive/auth-status`, {
@@ -442,11 +418,14 @@ const WPMUDEV_DriveTest = () => {
      */
     const handleDownload = async (fileId, fileName) => {
         try {
-            const response = await fetch(`${window.wpmudevDriveTest.restUrl}wpmudev/v1/drive/files/${fileId}/download`, {
+            const response = await fetch(`${window.wpmudevDriveTest.restUrl}wpmudev/v1/drive/download`, {
                 method: 'GET',
                 headers: {
                     'X-WP-Nonce': window.wpmudevDriveTest.nonce,
                 },
+                body: {
+                    fileId: fileId
+                }
             });
 
             const data = await response.json();

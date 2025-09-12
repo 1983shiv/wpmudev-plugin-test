@@ -94,72 +94,72 @@ class Google_Drive extends Base {
         // Add body class to admin pages.
         add_filter( 'admin_body_class', array( $this, 'admin_body_classes' ) );
 
-		// ADDED: Handle OAuth callback
-    	add_action( 'admin_init', array( $this, 'handle_oauth_callback' ) );
+        // ADDED: Handle OAuth callback
+        add_action( 'admin_init', array( $this, 'handle_oauth_callback' ) );
     }
 
-	/**
-	 * Handle OAuth callback from Google
-	 */
-	public function handle_oauth_callback() {
-		// Check if this is our page and has auth success
-		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== $this->page_slug ) {
-			return;
-		}
+    /**
+     * Handle OAuth callback from Google
+     */
+    public function handle_oauth_callback() {
+        // Check if this is our page and has auth success
+        if ( ! isset( $_GET['page'] ) || $_GET['page'] !== $this->page_slug ) {
+            return;
+        }
 
-		// Check for auth success parameter
-		if ( isset( $_GET['auth'] ) && $_GET['auth'] === 'success' ) {
-			// Add JavaScript to close popup and refresh parent
-			add_action( 'admin_footer', array( $this, 'close_popup_script' ) );
-		}
+        // Check for auth success parameter
+        if ( isset( $_GET['auth'] ) && $_GET['auth'] === 'success' ) {
+            // Add JavaScript to close popup and refresh parent
+            add_action( 'admin_footer', array( $this, 'close_popup_script' ) );
+        }
 
-		// Handle OAuth callback with authorization code
-		if ( isset( $_GET['action'] ) && $_GET['action'] === 'oauth_callback' && isset( $_GET['code'] ) ) {
-			$this->process_oauth_callback( $_GET['code'] );
-		}
-	}
+        // Handle OAuth callback with authorization code
+        if ( isset( $_GET['action'] ) && $_GET['action'] === 'oauth_callback' && isset( $_GET['code'] ) ) {
+            $this->process_oauth_callback( $_GET['code'] );
+        }
+    }
 
-	/**
-	 * Process OAuth callback with authorization code
-	 */
-	private function process_oauth_callback( $auth_code ) {
-		try {
-			// You would typically exchange the auth code for access token here
-			// For now, just redirect to success
-			wp_redirect( admin_url( 'admin.php?page=' . $this->page_slug . '&auth=success' ) );
-			exit;
-		} catch ( Exception $e ) {
-			wp_redirect( admin_url( 'admin.php?page=' . $this->page_slug . '&auth=error&message=' . urlencode( $e->getMessage() ) ) );
-			exit;
-		}
-	}
+    /**
+     * Process OAuth callback with authorization code
+     */
+    private function process_oauth_callback( $auth_code ) {
+        try {
+            // You would typically exchange the auth code for access token here
+            // For now, just redirect to success
+            wp_redirect( admin_url( 'admin.php?page=' . $this->page_slug . '&auth=success' ) );
+            exit;
+        } catch ( Exception $e ) {
+            wp_redirect( admin_url( 'admin.php?page=' . $this->page_slug . '&auth=error&message=' . urlencode( $e->getMessage() ) ) );
+            exit;
+        }
+    }
 
-	/**
-	 * Add script to close popup window
-	 */
-	public function close_popup_script() {
-		?>
-		<script type="text/javascript">
-		(function() {
-			// Close popup and refresh parent window
-			if (window.opener) {
-				// Notify parent window that auth is complete
-				try {
-					window.opener.postMessage({ 
-						type: 'google_auth_success', 
-						success: true 
-					}, '*');
-				} catch (e) {
-					console.log('Could not notify parent window');
-				}
-				
-				// Close popup
-				window.close();
-			}
-		})();
-		</script>
-		<?php
-	}
+    /**
+     * Add script to close popup window
+     */
+    public function close_popup_script() {
+        ?>
+        <script type="text/javascript">
+        (function() {
+            // Close popup and refresh parent window
+            if (window.opener) {
+                // Notify parent window that auth is complete
+                try {
+                    window.opener.postMessage({ 
+                        type: 'google_auth_success', 
+                        success: true 
+                    }, '*');
+                } catch (e) {
+                    console.log('Could not notify parent window');
+                }
+                
+                // Close popup
+                window.close();
+            }
+        })();
+        </script>
+        <?php
+    }
 
     /**
      * Register admin page
@@ -194,70 +194,92 @@ class Google_Drive extends Base {
      * @return void
      */
     public function prepare_assets() {
-		if ( ! is_array( $this->page_scripts ) ) {
-			$this->page_scripts = array();
-		}
+        if ( ! is_array( $this->page_scripts ) ) {
+            $this->page_scripts = array();
+        }
 
-		$handle = 'wpmudev_plugintest_drivepage';
-		
-		// Using YOUR asset paths and constants
-		$src       = WPMUDEV_PLUGINTEST_URL . 'assets/js/drivetestpage.min.js';
-		$style_src = WPMUDEV_PLUGINTEST_URL . 'assets/css/drivetestpage.min.css';
-		
-		// Get dependencies from asset file
-		$dependencies = ! empty( $this->script_data( 'dependencies' ) )
-			? $this->script_data( 'dependencies' )
-			: array(
-				'react',
-				'wp-element',
-				'wp-i18n',
-				'wp-components',
-				'wp-api-fetch',
-				'wp-data',
-				'wp-polyfill',
-			);
+        $handle = 'wpmudev_plugintest_drivepage';
+        
+        // FIXED: Correct asset paths matching webpack output
+        $src       = WPMUDEV_PLUGINTEST_URL . 'assets/js/drivetestpage.min.js';
+        $style_src = WPMUDEV_PLUGINTEST_URL . 'assets/css/drivetestpage.min.css';
+        
+        // FIXED: Check if files actually exist
+        $js_file_path = WPMUDEV_PLUGINTEST_DIR . 'assets/js/drivetestpage.min.js';
+        $css_file_path = WPMUDEV_PLUGINTEST_DIR . 'assets/css/drivetestpage.min.css';
+        
+        if ( ! file_exists( $js_file_path ) ) {
+            add_action( 'admin_notices', function() {
+                echo '<div class="notice notice-error"><p>';
+                echo esc_html__( 'Google Drive Test JavaScript assets not found. Please run "npm run build" to compile the assets.', 'wpmudev-plugin-test' );
+                echo '</p></div>';
+            });
+            return;
+        }
+        
+        // FIXED: Cleaner dependency array - remove 'react' as WordPress handles this
+        $dependencies = ! empty( $this->script_data( 'dependencies' ) )
+            ? $this->script_data( 'dependencies' )
+            : array(
+                'wp-element',
+                'wp-i18n',
+                'wp-components',
+                'wp-api-fetch',
+                'wp-data',
+                'wp-polyfill',
+            );
 
-		$this->page_scripts[ $handle ] = array(
-			'src'       => $src,
-			'style_src' => $style_src,
-			'deps'      => $dependencies,
-			'ver'       => $this->assets_version,
-			'strategy'  => true,
-			'localize'  => array(
-				'dom_element_id'         => $this->unique_id,
-				// REST API configuration
-				'restUrl'                => rest_url(),
-				'restRoot'               => esc_url_raw( rest_url() ),
-				'apiUrl'                 => home_url( '/wp-json/' ),
-				'nonce'                  => wp_create_nonce( 'wp_rest' ),
-				// Existing endpoints
-				'restEndpointSave'       => 'wpmudev/v1/drive/save-credentials',
-				'restEndpointAuth'       => 'wpmudev/v1/drive/auth',
-				'restEndpointFiles'      => 'wpmudev/v1/drive/files',
-				'restEndpointUpload'     => 'wpmudev/v1/drive/upload',
-				'restEndpointDownload'   => 'wpmudev/v1/drive/download',
-				'restEndpointCreate'     => 'wpmudev/v1/drive/create-folder',
-				'restEndpointAuthStatus' => 'wpmudev/v1/drive/auth-status',
-				// FIXED: Ensure these are proper booleans
-				'authStatus'             => (bool) $this->get_auth_status(),
-				'hasCredentials'         => (bool) $this->has_valid_credentials(),
-				'redirectUri'            => $this->get_redirect_uri(),
-				// Translatable strings
-				'strings'                => array(
-					'confirmDelete'           => __( 'Are you sure you want to delete this file?', 'wpmudev-plugin-test' ),
-					'uploadSuccess'           => __( 'File uploaded successfully', 'wpmudev-plugin-test' ),
-					'uploadError'             => __( 'Upload failed', 'wpmudev-plugin-test' ),
-					'networkError'            => __( 'Network error. Please try again.', 'wpmudev-plugin-test' ),
-					'authRequired'            => __( 'Authentication required', 'wpmudev-plugin-test' ),
-					'invalidFile'             => __( 'Invalid file type or size', 'wpmudev-plugin-test' ),
-					'redirectUriInstruction'  => sprintf(
-						__( 'Please use this URL %s in your Google API\'s Authorized redirect URIs field.', 'wpmudev-plugin-test' ),
-						$this->get_redirect_uri()
-					),
-				),
-			),
-		);
-	}
+        $this->page_scripts[ $handle ] = array(
+            'src'       => $src,
+            'style_src' => file_exists( $css_file_path ) ? $style_src : false,
+            'deps'      => $dependencies,
+            'ver'       => $this->get_file_version( $js_file_path ),
+            'strategy'  => true,
+            'localize'  => array(
+                'dom_element_id'         => $this->unique_id,
+                // REST API configuration
+                'restUrl'                => rest_url(),
+                'restRoot'               => esc_url_raw( rest_url() ),
+                'apiUrl'                 => home_url( '/wp-json/' ),
+                'nonce'                  => wp_create_nonce( 'wp_rest' ),
+                // Existing endpoints
+                'restEndpointSave'       => 'wpmudev/v1/drive/save-credentials',
+                'restEndpointAuth'       => 'wpmudev/v1/drive/auth',
+                'restEndpointFiles'      => 'wpmudev/v1/drive/files',
+                'restEndpointUpload'     => 'wpmudev/v1/drive/upload',
+                'restEndpointDownload'   => 'wpmudev/v1/drive/download',
+                'restEndpointCreate'     => 'wpmudev/v1/drive/create-folder',
+                'restEndpointAuthStatus' => 'wpmudev/v1/drive/auth-status',
+                // FIXED: Ensure these are proper booleans
+                'authStatus'             => (bool) $this->get_auth_status(),
+                'hasCredentials'         => (bool) $this->has_valid_credentials(),
+                'redirectUri'            => $this->get_redirect_uri(),
+                // Translatable strings
+                'strings'                => array(
+                    'confirmDelete'           => __( 'Are you sure you want to delete this file?', 'wpmudev-plugin-test' ),
+                    'uploadSuccess'           => __( 'File uploaded successfully', 'wpmudev-plugin-test' ),
+                    'uploadError'             => __( 'Upload failed', 'wpmudev-plugin-test' ),
+                    'networkError'            => __( 'Network error. Please try again.', 'wpmudev-plugin-test' ),
+                    'authRequired'            => __( 'Authentication required', 'wpmudev-plugin-test' ),
+                    'invalidFile'             => __( 'Invalid file type or size', 'wpmudev-plugin-test' ),
+                    'redirectUriInstruction'  => sprintf(
+                        __( 'Please use this URL %s in your Google API\'s Authorized redirect URIs field.', 'wpmudev-plugin-test' ),
+                        $this->get_redirect_uri()
+                    ),
+                ),
+            ),
+        );
+    }
+
+    /**
+     * ADDED: Get file version based on modification time
+     */
+    private function get_file_version( $file_path ) {
+        if ( file_exists( $file_path ) ) {
+            return filemtime( $file_path );
+        }
+        return $this->assets_version;
+    }
 
     /**
      * Checks if user is authenticated with Google Drive.
@@ -318,11 +340,20 @@ class Google_Drive extends Base {
     protected function raw_script_data(): array {
         static $script_data = null;
 
-        // Updated path to match your build structure
-        $asset_file_path = WPMUDEV_PLUGINTEST_DIR . 'build/googledrive-page/main.asset.php';
+        // FIXED: Try multiple possible asset file locations
+        $possible_paths = array(
+            WPMUDEV_PLUGINTEST_DIR . 'assets/js/drivetestpage.min.asset.php',
+            WPMUDEV_PLUGINTEST_DIR . 'build/googledrive-page/main.asset.php',
+            WPMUDEV_PLUGINTEST_DIR . 'build/drivetestpage.asset.php',
+        );
         
-        if ( is_null( $script_data ) && file_exists( $asset_file_path ) ) {
-            $script_data = include $asset_file_path;
+        if ( is_null( $script_data ) ) {
+            foreach ( $possible_paths as $asset_file_path ) {
+                if ( file_exists( $asset_file_path ) ) {
+                    $script_data = include $asset_file_path;
+                    break;
+                }
+            }
         }
 
         return (array) $script_data;
@@ -340,12 +371,13 @@ class Google_Drive extends Base {
             return;
         }
 
-		// ADDED: Ensure wp-api-fetch is configured properly
-    	wp_enqueue_script( 'wp-api-fetch' );
+        // ADDED: Ensure wp-api-fetch is configured properly
+        wp_enqueue_script( 'wp-api-fetch' );
 
-        // Set script translations for i18n
+        // FIXED: Enhanced asset enqueuing with better error handling
         if ( ! empty( $this->page_scripts ) ) {
             foreach ( $this->page_scripts as $handle => $page_script ) {
+                // Register and enqueue JavaScript
                 wp_register_script(
                     $handle,
                     $page_script['src'],
@@ -357,22 +389,40 @@ class Google_Drive extends Base {
                 // Set script translations for internationalization
                 wp_set_script_translations( $handle, 'wpmudev-plugin-test', WPMUDEV_PLUGINTEST_DIR . 'languages' );
 
+                // Localize script with data
                 if ( ! empty( $page_script['localize'] ) ) {
                     wp_localize_script( $handle, 'wpmudevDriveTest', $page_script['localize'] );
                 }
 
                 wp_enqueue_script( $handle );
 
+                // FIXED: Only enqueue CSS if it exists
                 if ( ! empty( $page_script['style_src'] ) ) {
-                    wp_enqueue_style( $handle, $page_script['style_src'], array(), $this->assets_version );
+                    wp_enqueue_style( 
+                        $handle . '-style', 
+                        $page_script['style_src'], 
+                        array( 'wp-components' ), 
+                        $page_script['ver'] 
+                    );
                 }
             }
         }
-		// ADDED: Ensure WordPress REST API settings are available
-		wp_localize_script( 'wp-api-fetch', 'wpApiSettings', array(
-			'root'  => esc_url_raw( rest_url() ),
-			'nonce' => wp_create_nonce( 'wp_rest' ),
-		) );
+
+        // ADDED: Ensure WordPress REST API settings are available
+        wp_localize_script( 'wp-api-fetch', 'wpApiSettings', array(
+            'root'  => esc_url_raw( rest_url() ),
+            'nonce' => wp_create_nonce( 'wp_rest' ),
+        ) );
+
+        // ADDED: Enqueue Shared UI if being used
+        if ( defined( 'WPMUDEV_PLUGINTEST_SUI_VERSION' ) ) {
+            wp_enqueue_style(
+                'sui-styles',
+                'https://unpkg.com/@wpmudev/shared-ui@' . WPMUDEV_PLUGINTEST_SUI_VERSION . '/dist/css/shared-ui.min.css',
+                array(),
+                WPMUDEV_PLUGINTEST_SUI_VERSION
+            );
+        }
     }
 
     /**
