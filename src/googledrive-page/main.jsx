@@ -418,14 +418,16 @@ const WPMUDEV_DriveTest = () => {
      */
     const handleDownload = async (fileId, fileName) => {
         try {
-            const response = await fetch(`${window.wpmudevDriveTest.restUrl}wpmudev/v1/drive/download`, {
+            const params = new URLSearchParams({
+                file_id: fileId
+            });
+            const response = await fetch(`${window.wpmudevDriveTest.restUrl}wpmudev/v1/drive/download?${params.toString()}`, {
                 method: 'GET',
                 headers: {
                     'X-WP-Nonce': window.wpmudevDriveTest.nonce,
+                    'Content-Type': 'application/json',
                 },
-                body: {
-                    fileId: fileId
-                }
+                // REMOVED: body is not allowed with GET requests
             });
 
             const data = await response.json();
