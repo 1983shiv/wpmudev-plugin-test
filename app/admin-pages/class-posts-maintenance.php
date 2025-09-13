@@ -99,9 +99,18 @@ class Posts_Maintenance extends Base {
         // add_action( 'wpmudev_drive_test_submenu_init', array( $this, 'register_admin_page' ) );
         add_action( 'admin_menu', array( $this, 'register_admin_page' ), 15 );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+
+        // IMPORTANT: Debug AJAX hook registration
+        error_log( '🔗 WPMUDEV: About to register AJAX hooks...' );
+        
         add_action( 'wp_ajax_wpmudev_scan_posts', array( $this, 'handle_ajax_scan_posts' ) );
+        error_log( '✅ WPMUDEV: Registered wp_ajax_wpmudev_scan_posts' );
+        
         add_action( 'wp_ajax_wpmudev_get_scan_progress', array( $this, 'handle_ajax_get_progress' ) );
+        error_log( '✅ WPMUDEV: Registered wp_ajax_wpmudev_get_scan_progress' );
+        
         add_action( 'wp_ajax_wpmudev_stop_scan', array( $this, 'handle_ajax_stop_scan' ) );
+        error_log( '✅ WPMUDEV: Registered wp_ajax_wpmudev_stop_scan' );
 
         // Initialize background processing and scheduling
         // $this->background_service->init();

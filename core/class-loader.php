@@ -130,6 +130,7 @@ final class Loader extends Base {
             App\Admin_Pages\Google_Drive::instance()->init();
             
             // THEN: Initialize Posts Maintenance (submenu) - this will listen to the custom action
+            $this->posts_maintenance = new \WPMUDEV\PluginTest\App\Admin_Pages\Posts_Maintenance();
             $this->init_posts_maintenance();
 
             // Initialize ENHANCED Drive API 
@@ -162,13 +163,14 @@ final class Loader extends Base {
                 error_log( 'WPMUDEV: Posts_Maintenance class not found' );
                 return;
             }
-
+            $this->posts_maintenance = new App\Admin_Pages\Posts_Maintenance();
+                $this->posts_maintenance->init();
             // IMPORTANT: Initialize Posts Maintenance AFTER Google Drive menu is set up
             // Use priority 11 to ensure it runs after the parent menu is registered
-            add_action( 'admin_menu', function() {
-                $this->posts_maintenance = new App\Admin_Pages\Posts_Maintenance();
-                $this->posts_maintenance->init();
-            }, 11 );
+            // add_action( 'admin_menu', function() {
+            //     $this->posts_maintenance = new App\Admin_Pages\Posts_Maintenance();
+            //     $this->posts_maintenance->init();
+            // }, 11 );
 
             // Initialize cleanup service
             if ( class_exists( '\WPMUDEV\PluginTest\App\Service\Cleanup_Service' ) ) {

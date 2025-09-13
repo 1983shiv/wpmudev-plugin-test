@@ -175,19 +175,6 @@
         /**
          * Update progress display
          */
-        // updateProgress: function() {
-        //     const data = {
-        //         action: 'wpmudev_get_scan_progress',
-        //         nonce: wpmudevPostsMaintenance.nonce
-        //     };
-
-        //     $.get(wpmudevPostsMaintenance.ajaxUrl, data)
-        //         .done((response) => {
-        //             if (response.success) {
-        //                 this.displayProgress(response.data);
-        //             }
-        //         });
-        // },
         updateProgress: function() {
             const data = {
                 action: 'wpmudev_get_scan_progress',

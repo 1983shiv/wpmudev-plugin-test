@@ -26,7 +26,7 @@ class Background_Process_Service {
      *
      * @var Posts_Scanner_Service
      */
-    private $scanner_service;
+    public $scanner_service;
 
     /**
      * Initialize the service
