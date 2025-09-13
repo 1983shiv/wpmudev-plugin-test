@@ -1,8 +1,11 @@
 import { createRoot, render, StrictMode, useState, useEffect, createInterpolateElement } from '@wordpress/element';
-import { Button, TextControl, Spinner, Notice, ProgressBar } from '@wordpress/components';
+import { Button, TextControl, Spinner, ProgressBar } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 
+import { pageHeader } from '../components/googledrive-page/pageHeader';
+
 import "./scss/style.scss";
+import NoticeAtTop from '../components/googledrive-page/Notice';
 
 const domElement = document.getElementById( window.wpmudevDriveTest.dom_element_id );
 
@@ -29,8 +32,6 @@ const WPMUDEV_DriveTest = () => {
         window.wpmudevDriveTest.restUrl = window.location.origin + '/wpmudev1/wp-json/';
         window.wpmudevDriveTest.nonce = window.wpmudevDriveTest.nonce || '';
     }
-
-
 
     // Call it in useEffect:
     useEffect(() => {        
@@ -560,19 +561,12 @@ const WPMUDEV_DriveTest = () => {
 
     return (
         <div className="sui-wrap">
-            <div className="sui-header">
-                <h1 className="sui-header-title">
-                    {__('Google Drive Test', 'wpmudev-plugin-test')}
-                </h1>
-                <p className="sui-description">
-                    {__('Test Google Drive API integration for applicant assessment', 'wpmudev-plugin-test')}
-                </p>
-            </div>
-
+            <pageHeader />
             {notice.message && (
-                <Notice status={notice.type} isDismissible onRemove={() => setNotice({ message: '', type: '' })}>
-                    {notice.message}
-                </Notice>
+                <NoticeAtTop notice={notice} setNotice={setNotice} />
+                // <Notice status={notice.type} isDismissible onRemove={() => setNotice({ message: '', type: '' })}>
+                //     {notice.message}
+                // </Notice>
             )}
 
             {/* Credentials Setup */}

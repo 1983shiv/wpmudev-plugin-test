@@ -1,0 +1,79 @@
+.wpmudev-posts-maintenance {
+    max-width: 1200px;
+}
+
+.wpmudev-posts-maintenance .postbox {
+    margin-bottom: 20px;
+}
+
+.wpmudev-posts-maintenance .postbox .inside {
+    padding: 20px;
+}
+
+.wpmudev-posts-maintenance .form-table th {
+    width: 200px;
+    vertical-align: top;
+    padding-top: 10px;
+}
+
+.wpmudev-posts-maintenance .form-table td label {
+    display: inline-block;
+    margin-right: 15px;
+    margin-bottom: 5px;
+}
+
+#progress-bar-container {
+    width: 100%;
+    background-color: #f1f1f1;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+#progress-bar {
+    height: 20px;
+    background-color: #0073aa;
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+#progress-text {
+    font-weight: 600;
+    margin: 10px 0;
+}
+
+#progress-details {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 3px;
+    border-left: 4px solid #0073aa;
+    font-size: 13px;
+}
+
+.notice-container {
+    margin: 20px 0;
+}
+
+.notice-container .notice {
+    margin: 10px 0;
+}
+
+/* Button states */
+.button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .wpmudev-posts-maintenance .form-table th,
+    .wpmudev-posts-maintenance .form-table td {
+        display: block;
+        width: 100%;
+        padding: 10px 0;
+    }
+    
+    .wpmudev-posts-maintenance .form-table th {
+        border-bottom: none;
+    }
+}

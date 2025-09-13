@@ -28,9 +28,9 @@ if ( ! defined( 'WPMUDEV_PLUGINTEST_VERSION' ) ) {
 	define( 'WPMUDEV_PLUGINTEST_VERSION', '1.0.0' );
 }
 
-// Define WPMUDEV_PLUGINTEST_PLUGIN_FILE.
-if ( ! defined( 'WPMUDEV_PLUGINTEST_PLUGIN_FILE' ) ) {
-	define( 'WPMUDEV_PLUGINTEST_PLUGIN_FILE', __FILE__ );
+// Define WPMUDEV_PLUGINTEST_FILE.
+if ( ! defined( 'WPMUDEV_PLUGINTEST_FILE' ) ) {
+	define( 'WPMUDEV_PLUGINTEST_FILE', __FILE__ );
 }
 
 // Plugin directory.

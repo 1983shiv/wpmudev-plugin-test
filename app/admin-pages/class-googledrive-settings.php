@@ -164,10 +164,26 @@ class Google_Drive extends Base {
     /**
      * Register admin page
      */
+    // public function register_admin_page() {
+    //     $this->page_hook = add_menu_page(
+    //         __( 'Google Drive Test', 'wpmudev-plugin-test' ),
+    //         $this->page_title,
+    //         'manage_options',
+    //         $this->page_slug,
+    //         array( $this, 'callback' ),
+    //         'dashicons-cloud',
+    //         7
+    //     );
+
+    //     // Prepare assets only when our page loads
+    //     add_action( 'load-' . $this->page_hook, array( $this, 'prepare_assets' ) );
+    // }
+
     public function register_admin_page() {
+        // Add main menu page
         $this->page_hook = add_menu_page(
             __( 'Google Drive Test', 'wpmudev-plugin-test' ),
-            $this->page_title,
+            __( 'Google Drive Test', 'wpmudev-plugin-test' ),
             'manage_options',
             $this->page_slug,
             array( $this, 'callback' ),
@@ -175,6 +191,18 @@ class Google_Drive extends Base {
             7
         );
 
+        // ADDED: Add "Settings" submenu that points to the same page as main menu
+        add_submenu_page(
+            $this->page_slug,                                    // Parent slug
+            __( 'Google Drive Settings', 'wpmudev-plugin-test' ), // Page title
+            __( 'Settings', 'wpmudev-plugin-test' ),             // Menu title
+            'manage_options',                                    // Capability
+            $this->page_slug,                                    // Menu slug (same as parent)
+            array( $this, 'callback' ),                          // Callback function
+        );
+
+        // ADDED: Allow other classes to add submenus under this parent
+        do_action( 'wpmudev_drive_test_submenu_init', $this->page_slug );
         // Prepare assets only when our page loads
         add_action( 'load-' . $this->page_hook, array( $this, 'prepare_assets' ) );
     }
