@@ -6,6 +6,10 @@
     margin-bottom: 20px;
 }
 
+.wpmudev-posts-maintenance .postbox h2{
+    padding-left: 20px;
+}
+
 .wpmudev-posts-maintenance .postbox .inside {
     padding: 20px;
 }

@@ -100,21 +100,14 @@ class Posts_Maintenance extends Base {
         add_action( 'admin_menu', array( $this, 'register_admin_page' ), 15 );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
-        // IMPORTANT: Debug AJAX hook registration
-        error_log( '🔗 WPMUDEV: About to register AJAX hooks...' );
         
         add_action( 'wp_ajax_wpmudev_scan_posts', array( $this, 'handle_ajax_scan_posts' ) );
-        error_log( '✅ WPMUDEV: Registered wp_ajax_wpmudev_scan_posts' );
-        
+      
         add_action( 'wp_ajax_wpmudev_get_scan_progress', array( $this, 'handle_ajax_get_progress' ) );
-        error_log( '✅ WPMUDEV: Registered wp_ajax_wpmudev_get_scan_progress' );
         
         add_action( 'wp_ajax_wpmudev_stop_scan', array( $this, 'handle_ajax_stop_scan' ) );
-        error_log( '✅ WPMUDEV: Registered wp_ajax_wpmudev_stop_scan' );
-
-        // Initialize background processing and scheduling
-        // $this->background_service->init();
-        // $this->scheduler_service->init();
+      
+        add_action( 'wp_ajax_wpmudev_clear_scan_status', array( $this, 'handle_ajax_clear_scan_status' ) );
         // FIXED: Only initialize if services exist
         if ( $this->background_service ) {
             $this->background_service->init();
@@ -304,6 +297,25 @@ class Posts_Maintenance extends Base {
                 'message' => $e->getMessage(),
             ) );
         }
+    }
+
+    /**
+     * Handle AJAX request to clear scan status
+     */
+    public function handle_ajax_clear_scan_status() {
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        
+        if ( ! wp_verify_nonce( $nonce, 'wpmudev_posts_maintenance' ) ) {
+            wp_send_json_error( array( 'message' => 'Security check failed' ) );
+            return;
+        }
+
+        // Clear the scan status
+        if ( $this->background_service ) {
+            delete_option( 'wpmudev_background_scan_job' );
+        }
+
+        wp_send_json_success( array( 'message' => 'Status cleared' ) );
     }
 
     /**

@@ -218,6 +218,48 @@
         /**
          * Display progress information
          */
+        // displayProgress: function(progress) {
+        //     const progressBar = $('#progress-bar');
+        //     const progressText = $('#progress-text');
+        //     const progressDetails = $('#progress-details');
+
+        //     // Update progress bar
+        //     progressBar.css('width', progress.progress + '%');
+
+        //     // Update progress text
+        //     let statusText = '';
+        //     switch (progress.status) {
+        //         case 'running':
+        //             statusText = wpmudevPostsMaintenance.strings.processingPosts;
+        //             break;
+        //         case 'completed':
+        //             statusText = wpmudevPostsMaintenance.strings.scanCompleted;
+        //             this.stopProgressPolling();
+        //             this.updateScanButtons(false);
+        //             this.showNotice('Scan completed successfully!', 'success');
+        //             // REMOVED: setTimeout(() => { location.reload(); }, 2000);
+        //             break;
+        //         case 'stopped':
+        //             statusText = wpmudevPostsMaintenance.strings.scanStopped;
+        //             this.stopProgressPolling();
+        //             this.updateScanButtons(false);
+        //             break;
+        //         case 'error':
+        //             statusText = wpmudevPostsMaintenance.strings.scanError;
+        //             this.stopProgressPolling();
+        //             this.updateScanButtons(false);
+        //             break;
+        //     }
+
+        //     progressText.text(statusText);
+
+        //     // Update details
+        //     const detailsHtml = `
+        //         <strong>Progress:</strong> ${progress.processed} / ${progress.total} posts (${progress.progress}%)
+        //         ${progress.errors.length > 0 ? '<br><strong>Errors:</strong> ' + progress.errors.length : ''}
+        //     `;
+        //     progressDetails.html(detailsHtml);
+        // },
         displayProgress: function(progress) {
             const progressBar = $('#progress-bar');
             const progressText = $('#progress-text');
@@ -236,19 +278,33 @@
                     statusText = wpmudevPostsMaintenance.strings.scanCompleted;
                     this.stopProgressPolling();
                     this.updateScanButtons(false);
+                    this.showNotice('Scan completed successfully!', 'success');
+                    
+                    // Hide progress UI after showing completion
                     setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                        this.hideProgressContainer();
+                        this.resetProgressDisplay();
+                        // Clear the completed status
+                        this.clearScanStatus();
+                    }, 3000);
                     break;
                 case 'stopped':
                     statusText = wpmudevPostsMaintenance.strings.scanStopped;
                     this.stopProgressPolling();
                     this.updateScanButtons(false);
+                    setTimeout(() => {
+                        this.hideProgressContainer();
+                        this.resetProgressDisplay();
+                    }, 2000);
                     break;
                 case 'error':
                     statusText = wpmudevPostsMaintenance.strings.scanError;
                     this.stopProgressPolling();
                     this.updateScanButtons(false);
+                    setTimeout(() => {
+                        this.hideProgressContainer();
+                        this.resetProgressDisplay();
+                    }, 5000);
                     break;
             }
 
@@ -262,6 +318,24 @@
             progressDetails.html(detailsHtml);
         },
 
+        /**
+         * Reset progress display to initial state
+         */
+        resetProgressDisplay: function() {
+            $('#progress-bar').css('width', '0%');
+            $('#progress-text').text('');
+            $('#progress-details').html('');
+        },
+
+        /**
+         * Clear scan status on backend
+         */
+        clearScanStatus: function() {
+            $.post(wpmudevPostsMaintenance.ajaxUrl, {
+                action: 'wpmudev_clear_scan_status',
+                nonce: wpmudevPostsMaintenance.nonce
+            });
+        },
         /**
          * Check current progress on page load
          */
